@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Tournament Admin</title>
+    <script src="https://unpkg.com/htmx.org@1.9.6"></script>
+    <style>
+        body {
+            font-family: system-ui, sans-serif;
+            background: #f1f5f9;
+            padding: 20px;
+        }
+
+        .admin-container {
+            display: flex;
+            gap: 30px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .panel {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            flex: 1;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+        }
+
+        h2 {
+            color: #334155;
+            margin-top: 0;
+        }
+
+        .form-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            padding: 8px;
+            border: 1px solid #cbd5e1;
+            border-radius: 4px;
+        }
+
+        button {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #1d4ed8;
+        }
+
+        button.action-btn {
+            background: #10b981;
+            font-size: 0.85rem;
+            padding: 6px 12px;
+        }
+
+        a.button {
+            background: #2563eb;
+            color: white;
+            border: none;
+            font-size: 0.85rem;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        a.action-btn {
+            background: #10b981;
+            font-size: 0.85rem;
+            padding: 6px 12px;
+        }
+
+        button.danger-btn {
+            background: #ef4444;
+            /* Red color */
+            font-size: 0.85rem;
+            padding: 6px 12px;
+            margin-left: 5px;
+        }
+
+        button.danger-btn:hover {
+            background: #dc2626;
+        }
+
+        ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        li {
+            background: #f8fafc;
+            margin-bottom: 10px;
+            padding: 12px;
+            border-radius: 4px;
+            border: 1px solid #e2e8f0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1 style="text-align: center; color: #0f172a;">Admin Dashboard</h1>
+
+    <div class="admin-container">
+
+        <div class="panel">
+            <h2>Manage Rings</h2>
+            <form class="form-group" hx-post="/ui/rings" hx-target="#ring-list" hx-swap="beforeend">
+                <input type="text" name="name" placeholder="e.g., Ring 1" required>
+                <button type="submit">Add Ring</button>
+            </form>
+
+            <ul id="ring-list" hx-get="/ui/rings_list" hx-trigger="load">
+            </ul>
+        </div>
+
+        <div class="panel">
+            <h2>Manage Divisions</h2>
+            <form class="form-group" hx-post="/ui/divisions" hx-target="#division-list" hx-swap="beforeend">
+                <input type="text" name="name" placeholder="e.g., Male - U70kg" required>
+                <button type="submit">Add Division</button>
+            </form>
+
+            <ul id="division-list" hx-get="/ui/divisions_list" hx-trigger="load">
+            </ul>
+        </div>
+
+    </div>
+
+</body>
+
+</html>

@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Setup Division: {{ division.name }}</title>
+    <script src="https://unpkg.com/htmx.org@1.9.6"></script>
+    <style>
+        body {
+            font-family: system-ui, sans-serif;
+            background: #f1f5f9;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+        }
+
+        textarea {
+            width: 100%;
+            height: 150px;
+            padding: 10px;
+            border: 1px solid #cbd5e1;
+            border-radius: 4px;
+            box-sizing: border-box;
+            resize: vertical;
+        }
+
+        button {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1rem;
+            width: 100%;
+        }
+
+        button:hover {
+            background: #1d4ed8;
+        }
+
+        button.generate-btn {
+            background: #10b981;
+            margin-top: 20px;
+            font-weight: bold;
+        }
+
+        button.generate-btn:hover {
+            background: #059669;
+        }
+
+        ul {
+            list-style: none;
+            padding: 0;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        li {
+            background: #f8fafc;
+            margin-bottom: 8px;
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #e2e8f0;
+        }
+
+        a.back-link {
+            color: #64748b;
+            text-decoration: none;
+        }
+
+        a.back-link:hover {
+            color: #0f172a;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <div class="header">
+            <h1 style="margin: 0; color: #0f172a;">{{ division.name }}</h1>
+            <a href="/admin" class="back-link">&larr; Back to Admin</a>
+        </div>
+
+        <div class="grid">
+            <div {{ "hidden" if division.competitors else "" }}>
+                <h3 style="margin-top: 0;">Add Competitors</h3>
+                <p style="font-size: 0.9rem; color: #64748b;">Paste a list of names (one per line):</p>
+
+                <form hx-post="/ui/divisions/{{ division.id }}/competitors" hx-target="#competitor-list"
+                    hx-swap="innerHTML" hx-on::after-request="this.reset()">
+                    <textarea name="names" placeholder="John Doe&#10;Jane Smith&#10;Bruce Lee" required></textarea>
+                    <button type="submit" style="margin-top: 10px;">Add to Division</button>
+                </form>
+            </div>
+
+            <div>
+                <h3 style="margin-top: 0;">Division Roster</h3>
+                <ul id="competitor-list" hx-get="/ui/divisions/{{ division.id }}/competitors_list" hx-trigger="load">
+                </ul>
+                {% if division.competitors %}
+                <div style="padding: 15px; background: #d1fae5; color: #64748b; border-radius: 4px;">
+                    <a href="/admin/divisions/{{ division.id }}/bracket_manage"
+                        style="display: inline-block; background: #059669; color: white; padding: 8px 16px; text-decoration: none; border-radius: 4px; margin-top: 10px;">
+                        Manage & Schedule Bracket
+                    </a>
+                </div>
+                {% else %}
+                <div id="bracket-controls" style="margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 20px;">
+                    <p style="font-size: 0.9rem; color: #64748b;">Once all competitors are added, lock the division and
+                        build the bracket.</p>
+
+                    <button class="generate-btn" hx-post="/divisions/{{ division.id }}/generate_bracket"
+                        hx-target="#bracket-controls" hx-swap="innerHTML"
+                        hx-confirm="Are you sure? You cannot add more competitors once the bracket is generated.">
+                        Generate Final Bracket
+                    </button>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+</body>
+
+</html>

@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Manage Bracket: {{ division.name }}</title>
+    <script src="https://unpkg.com/htmx.org@1.9.6"></script>
+    <style>
+        body {
+            font-family: system-ui, sans-serif;
+            background: #f1f5f9;
+            padding: 20px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        /* Bracket Layout */
+        .bracket-container {
+            display: flex;
+            gap: 40px;
+            overflow-x: auto;
+            padding-bottom: 30px;
+        }
+
+        .round-column {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-around;
+            min-width: 320px;
+        }
+
+        .round-title {
+            text-align: center;
+            color: #475569;
+            margin-bottom: 20px;
+            text-transform: uppercase;
+            font-size: 0.9rem;
+            letter-spacing: 1px;
+        }
+
+        /* Match Card */
+        .match-card {
+            background: white;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            margin-bottom: 15px;
+            overflow: hidden;
+        }
+
+        .match-header {
+            background: #f8fafc;
+            padding: 8px 12px;
+            border-bottom: 1px solid #e2e8f0;
+            font-size: 0.85rem;
+            color: #64748b;
+        }
+
+        .match-card-hidden {
+            visibility: hidden;
+        }
+
+        .match-body {
+            padding: 12px;
+            border-bottom: 1px solid #e2e8f0;
+            font-size: 0.95rem;
+            line-height: 1.5;
+        }
+
+        /* Scheduling Section */
+        .schedule-form {
+            background: #f8fafc;
+            padding: 12px;
+        }
+
+        select,
+        input {
+            padding: 6px;
+            border: 1px solid #cbd5e1;
+            border-radius: 4px;
+            font-size: 0.85rem;
+        }
+
+        .save-btn {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85rem;
+        }
+
+        .save-btn:hover {
+            background: #1d4ed8;
+        }
+
+        a.back-link {
+            color: #64748b;
+            text-decoration: none;
+        }
+
+        a.back-link:hover {
+            color: #0f172a;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="header">
+        <h1 style="margin: 0; color: #0f172a;">Manage Schedule: {{ division.name }}</h1>
+        <a href="/admin/divisions/{{ division.id }}/setup" class="back-link">&larr; Back to Setup</a>
+    </div>
+
+    <div class="bracket-container">
+        {% for round_name, match_list in rounds.items() %}
+        <div class="round-column">
+            <div class="round-title">{{ round_name }}</div>
+
+            {% for match in match_list %}
+            <div class={{ "match-card" if round_name!='Round 1' or (match.competitor1 and match.competitor2)
+                else "match-card-hidden" }} id="match-{{ match.id }}">
+
+                <div class="match-body">
+                    <div>
+                        <font style="color: #252ceb; font-weight: bold;">Chung</font>: {{ match.competitor1.name if
+                        match.competitor1 else 'TBD' }}
+                    </div>
+                    <div>
+                        <font style="color: #eb2525; font-weight: bold;">Hong</font>: {{ match.competitor2.name if
+                        match.competitor2 else 'TBD' }}
+                    </div>
+                </div>
+
+                <div class="schedule-form">
+                    <div style="margin-bottom: 8px; font-weight: bold; color: #2563eb;">
+                        Scheduled: {% if match.match_number %}Match {{ match.match_number }}{% else %}Unassigned{% endif
+                        %}
+                    </div>
+
+                    <form hx-put="/matches/{{ match.id }}/schedule" hx-target="#match-{{ match.id }}"
+                        hx-swap="outerHTML" style="display: flex; gap: 5px;">
+                        <select name="ring_id" required style="flex: 1;">
+                            <option value="">Select Ring...</option>
+                            {% for ring in rings %}
+                            <option value="{{ ring.id }}" {% if ring.id==match.ring_id %}selected{% endif %}>
+                                {{ ring.name }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <input type="number" name="ring_sequence" placeholder="Seq (e.g. 1)" value="{{ match.match_number
+                            - (match.ring_id * 100) if match.match_number else '' }}" required style="width: 80px;">
+                        <button type="submit" class="save-btn">Save</button>
+                    </form>
+                </div>
+            </div>
+            {% endfor %}
+
+        </div>
+        {% endfor %}
+    </div>
+
+</body>
+
+</html>

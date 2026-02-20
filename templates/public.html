@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Tournament Live View</title>
+    <script src="https://unpkg.com/htmx.org@1.9.6"></script>
+    <style>
+        body {
+            font-family: system-ui, sans-serif;
+            background: #f8fafc;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            color: #0f172a;
+        }
+
+        /* Grid layout for Rings */
+        .ring-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+
+        .ring-card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+        }
+
+        .ring-card h2 {
+            margin-top: 0;
+            color: #2563eb;
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 10px;
+        }
+
+        .match-item {
+            padding: 10px 0;
+            border-bottom: 1px solid #f1f5f9;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .match-item:last-child {
+            border-bottom: none;
+        }
+
+        .status-in-progress {
+            color: #059669;
+            font-weight: bold;
+        }
+
+        .status-pending {
+            color: #64748b;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="header">
+        <h1>Live Tournament Status</h1>
+        <p>Auto-updating every 15 seconds...</p>
+    </div>
+
+    <div class="ring-grid" hx-get="/ui/public_rings" hx-trigger="load, every 15s" hx-swap="innerHTML">
+        <div style="text-align: center; width: 100%; color: #64748b;">Loading live rings...</div>
+    </div>
+
+</body>
+
+</html>

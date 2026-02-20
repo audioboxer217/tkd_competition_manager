@@ -1,0 +1,36 @@
+<div class="bracket">
+    {% for round_name, match_list in rounds.items() %}
+    <div class="round">
+        <h3 class="round-title">{{ round_name }}</h3>
+        
+        {% for match in match_list %}
+        <div class="match" 
+            {% if match.status == 'Pending' %}style="opacity: 0.7;"{% endif %}>
+            
+            <div class="match-header">
+                Match #{{ match.id }} 
+                {% if match.ring_id %}| Ring {{ match.ring_id }}{% endif %}
+            </div>
+
+            <div class="competitor {% if match.winner_id == match.competitor1_id %}winner{% endif %}">
+                {% if match.competitor1_id %}
+                    {{ match.competitor1_id }} {% else %}
+                    <span class="tbd">TBD</span>
+                {% endif %}
+            </div>
+
+            <div class="competitor {% if match.winner_id == match.competitor2_id %}winner{% endif %}">
+                {% if match.competitor2_id %}
+                    {{ match.competitor2_id }}
+                {% else %}
+                    <span class="tbd">TBD</span>
+                {% endif %}
+            </div>
+            
+            <div class="match-status">{{ match.status }}</div>
+        </div>
+        {% endfor %}
+        
+    </div>
+    {% endfor %}
+</div>

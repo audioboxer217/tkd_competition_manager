@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ ring.name }} - Scorekeeper</title>
+    <script src="https://unpkg.com/htmx.org@1.9.6"></script>
+    <style>
+        body {
+            font-family: system-ui, sans-serif;
+            background: #f8fafc;
+            margin: 0;
+            padding: 15px;
+        }
+
+        .header {
+            background: #1e293b;
+            color: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 1.5rem;
+        }
+
+        .match-card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            border-left: 6px solid #3b82f6;
+        }
+
+        .match-info {
+            font-size: 1.1rem;
+            color: #64748b;
+            margin-bottom: 15px;
+            border-bottom: 1px solid #e2e8f0;
+            padding-bottom: 10px;
+        }
+
+        /* Big touch-friendly competitor selection */
+        .competitor-select {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .competitor-option {
+            flex: 1;
+            position: relative;
+        }
+
+        .competitor-option input[type="radio"] {
+            display: none;
+        }
+
+        .competitor-label {
+            display: block;
+            padding: 20px;
+            text-align: center;
+            border: 2px solid #cbd5e1;
+            border-radius: 8px;
+            font-size: 1.25rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: #f8fafc;
+        }
+
+        /* Highlight blue/red typical of TKD */
+        .competitor-option input[type="radio"]:checked+.competitor-label.blue-side {
+            background: #eff6ff;
+            border-color: #3b82f6;
+            color: #1d4ed8;
+        }
+
+        .competitor-option input[type="radio"]:checked+.competitor-label.red-side {
+            background: #fef2f2;
+            border-color: #ef4444;
+            color: #b91c1c;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            background: #f1f5f9;
+            padding: 15px;
+            border-radius: 8px;
+        }
+
+        select {
+            font-size: 1.1rem;
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px solid #cbd5e1;
+            flex: 1;
+        }
+
+        button.submit-btn {
+            background: #10b981;
+            color: white;
+            border: none;
+            font-size: 1.25rem;
+            font-weight: bold;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+
+        button.submit-btn:hover {
+            background: #059669;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 50px;
+            color: #64748b;
+            font-size: 1.2rem;
+            background: white;
+            border-radius: 8px;
+        }
+
+        a.back-link {
+            color: #64748b;
+            text-decoration: none;
+        }
+
+        a.back-link:hover {
+            color: #0f172a;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="header">
+        <span>Scorekeeper Console</span>
+        <h1>{{ ring.name }}</h1>
+        <a href="/admin" class="back-link">&larr; Back to Admin</a>
+    </div>
+    <div id="matches-container">
+        {% if not matches %}
+        <div class="empty-state">
+            No ready matches currently assigned to this ring.<br>
+            <button onclick="location.reload()" style="margin-top: 15px; padding: 10px 20px; font-size: 1rem;">Refresh
+                Queue</button>
+        </div>
+        {% else %}
+        {% for match in matches %}
+        <div class="match-card" id="match-{{ match.id }}">
+            <div class="match-info">
+                <strong>Match {{ match.match_number }}</strong> &mdash; {{ match.division.name }} ({{ match.round_name
+                }})
+            </div>
+
+            <form hx-post="/ui/matches/{{ match.id }}/result" hx-target="#match-{{ match.id }}" hx-swap="outerHTML">
+
+                <div class="competitor-select">
+                    <div class="competitor-option">
+                        <input type="radio" id="win-{{ match.id }}-1" name="winner_id"
+                            value="{{ match.competitor1_id }}" required>
+                        <label for="win-{{ match.id }}-1" class="competitor-label blue-side">
+                            Chung (Blue)<br>
+                            <span style="color: #0f172a; font-size: 1.5rem;">{{ match.competitor1.name }}</span>
+                        </label>
+                    </div>
+
+                    <div class="competitor-option">
+                        <input type="radio" id="win-{{ match.id }}-2" name="winner_id"
+                            value="{{ match.competitor2_id }}">
+                        <label for="win-{{ match.id }}-2" class="competitor-label red-side">
+                            Hong (Red)<br>
+                            <span style="color: #0f172a; font-size: 1.5rem;">{{ match.competitor2.name }}</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="controls">
+                    <select name="status" required>
+                        <option value="Completed" selected>Normal Win (PTF/PTG/SUP)</option>
+                        <option value="Disqualification">Win by Disqualification (DSQ)</option>
+                    </select>
+                    <button type="submit" class="submit-btn"
+                        hx-confirm="Submit official result for Match {{ match.match_number }}?">Submit Result</button>
+                </div>
+            </form>
+        </div>
+        {% endfor %}
+        {% endif %}
+    </div>
+
+</body>
+
+</html>
