@@ -300,6 +300,14 @@ def ui_public_rings():
     ring_data = []
     for ring in rings:
         matches = Match.query.filter(Match.ring_id == ring.id, Match.status.in_(["Pending", "In Progress"])).all()
+        for match in matches:
+            match.comp_1 = (
+                f"{match.competitor1.name.split()[0][0]}. {match.competitor1.name.split()[-1]}" if match.competitor1 else "TBD"
+            )
+            match.comp_2 = (
+                f"{match.competitor2.name.split()[0][0]}. {match.competitor2.name.split()[-1]}" if match.competitor2 else "TBD"
+            )
+
         ring_data.append({"name": ring.name, "matches": matches})
 
     html = """
@@ -310,8 +318,9 @@ def ui_public_rings():
             <p style="color: #94a3b8;">No upcoming matches.</p>
         {% else %}
             {% for match in ring.matches %}
+            <strong>{{ match.match_number }}</strong> - <a href="/ui/divisions/{{ match.division.id }}/bracket">{{ match.division.name }}</a> ({{ match.round_name }})
             <div class="match-item">
-                <span>Match #{{ match.id }} ({{ match.round_name }})</span>
+                <span><font style="color: #252ceb; font-weight: bold;">{{ match.comp_1 }}</font> vs <font style="color: #eb2525; font-weight: bold;">{{ match.comp_2 }}</font></span>
                 <span class="{% if match.status == 'In Progress' %}status-in-progress{% else %}status-pending{% endif %}">
                     {{ match.status }}
                 </span>
