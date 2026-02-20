@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>{{ division.name }} Results</title>
+    <script src="https://unpkg.com/htmx.org@1.9.6"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f4f7f6;
+            padding: 20px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        /* Bracket Layout using Flexbox */
+        .bracket-container {
+            display: flex;
+            flex-direction: row;
+            align-items: stretch;
+            gap: 40px;
+            overflow-x: auto;
+            padding: 20px 0;
+        }
+
+        .round-column {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-around;
+            width: 250px;
+        }
+
+        .round-title {
+            text-align: center;
+            color: #333;
+            margin-bottom: 20px;
+        }
+
+        /* Match Card Styling */
+        .match-card {
+            background: white;
+            border: 2px solid #cbd5e1;
+            border-radius: 6px;
+            margin: 10px 0;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            position: relative;
+        }
+
+        .match-header {
+            background: #f8fafc;
+            padding: 5px 10px;
+            font-size: 0.8rem;
+            color: #64748b;
+            border-bottom: 1px solid #cbd5e1;
+            border-radius: 4px 4px 0 0;
+        }
+
+        .competitor {
+            padding: 10px;
+            border-bottom: 1px solid #f1f5f9;
+            font-size: 1rem;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .competitor:last-of-type {
+            border-bottom: none;
+        }
+
+        .tbd {
+            color: #94a3b8;
+            font-style: italic;
+        }
+
+        .winner {
+            font-weight: bold;
+            background-color: #ecfdf5;
+            color: #059669;
+        }
+
+        .match-status {
+            text-align: right;
+            font-size: 0.75rem;
+            padding: 4px 10px;
+            color: #94a3b8;
+        }
+
+        a.back-link {
+            color: #64748b;
+            text-decoration: none;
+        }
+
+        a.back-link:hover {
+            color: #0f172a;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="header">
+        <h1>{{ division.name }} Results</h1>
+    </div>
+    
+    <center>Auto-updating every 15 seconds...</center>
+    <span style="float: right;"><a href="/" class="back-link">&larr; Back to Live Status</a></span>
+    <div class="ring-grid" hx-get="/divisions/{{ division.id }}/bracket_ui" hx-trigger="load, every 15s"
+        hx-swap="innerHTML">
+        <div style="text-align: center; width: 100%; color: #64748b;">Loading results...</div>
+    </div>
+
+</body>
+
+</html>

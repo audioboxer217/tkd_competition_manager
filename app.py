@@ -271,6 +271,11 @@ def admin_view():
     return render_template("admin.html")
 
 
+@app.route("/ui/divisions/<int:div_id>/bracket", methods=["GET"])
+def brack(div_id):
+    return render_template("bracket_view.html", division=Division.query.get(div_id))
+
+
 @app.route("/divisions/<int:div_id>/bracket_ui", methods=["GET"])
 def get_bracket_ui(div_id):
     matches = Match.query.filter_by(division_id=div_id).all()
@@ -281,6 +286,8 @@ def get_bracket_ui(div_id):
     # Group matches by round name directly in Python
     grouped_matches = defaultdict(list)
     for match in matches:
+        match.competitor1_name = Competitor.query.get(match.competitor1_id).name if match.competitor1_id else "TBD"
+        match.competitor2_name = Competitor.query.get(match.competitor2_id).name if match.competitor2_id else "TBD"
         grouped_matches[match.round_name].append(match)
 
     # Optional: Sort the dictionary so "Round 1" comes before "Quarter-Final", etc.
