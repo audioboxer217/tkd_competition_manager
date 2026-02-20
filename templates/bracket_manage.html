@@ -7,14 +7,14 @@
     <script src="https://unpkg.com/htmx.org@1.9.6"></script>
     <style>
         body {
-            font-family: system-ui, sans-serif;
-            background: #f1f5f9;
+            font-family: Arial, sans-serif;
+            background: #f4f7f6;
             padding: 20px;
         }
 
         .header {
             display: flex;
-            justify-content: space-between;
+            justify-content: center;
             align-items: center;
             margin-bottom: 20px;
         }
@@ -22,9 +22,11 @@
         /* Bracket Layout */
         .bracket-container {
             display: flex;
+            flex-direction: row;
+            align-items: stretch;
             gap: 40px;
             overflow-x: auto;
-            padding-bottom: 30px;
+            padding: 20px 0;
         }
 
         .round-column {
@@ -36,11 +38,11 @@
 
         .round-title {
             text-align: center;
-            color: #475569;
+            color: #333;
             margin-bottom: 20px;
-            text-transform: uppercase;
+            /* text-transform: uppercase;
             font-size: 0.9rem;
-            letter-spacing: 1px;
+            letter-spacing: 1px; */
         }
 
         /* Match Card */
@@ -114,10 +116,11 @@
 <body>
 
     <div class="header">
-        <h1 style="margin: 0; color: #0f172a;">Manage Schedule: {{ division.name }}</h1>
-        <a href="/admin/divisions/{{ division.id }}/setup" class="back-link">&larr; Back to Setup</a>
+        <h1 style="margin: 0; color: #0f172a;">Manage Bracket: {{ division.name }}</h1>
     </div>
-
+    
+    <span style="float: right;"><a href="/admin/divisions/{{ division.id }}/setup" class="back-link">&larr; Back to
+            Setup</a></span>
     <div class="bracket-container">
         {% for round_name, match_list in rounds.items() %}
         <div class="round-column">
@@ -140,10 +143,12 @@
 
                 <div class="schedule-form">
                     <div style="margin-bottom: 8px; font-weight: bold; color: #2563eb;">
-                        Scheduled: {% if match.match_number %}Match {{ match.match_number }}{% else %}Unassigned{% endif
+                        {{ match.status if match.status != "Pending" else "Scheduled" }}: {% if match.match_number %}Match {{
+                        match.match_number
+                        }}{% else %}Unassigned{% endif
                         %}
                     </div>
-
+                    {% if match.status == "Pending" %}
                     <form hx-put="/matches/{{ match.id }}/schedule" hx-target="#match-{{ match.id }}"
                         hx-swap="outerHTML" style="display: flex; gap: 5px;">
                         <select name="ring_id" required style="flex: 1;">
@@ -158,6 +163,7 @@
                             - (match.ring_id * 100) if match.match_number else '' }}" required style="width: 80px;">
                         <button type="submit" class="save-btn">Save</button>
                     </form>
+                    {% endif %}
                 </div>
             </div>
             {% endfor %}
