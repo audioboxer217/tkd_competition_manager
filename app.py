@@ -43,7 +43,7 @@ class Match(db.Model):
     next_match_id = db.Column(db.Integer, db.ForeignKey("match.id"), nullable=True)
     match_number = db.Column(db.Integer, nullable=True)  # E.g., 101, 525
 
-    # Status: 'Pending', 'In Progress', 'Completed', 'Draw', 'Disqualification'
+    # Status: 'Pending', 'In Progress', 'Completed', 'Disqualification'
     status = db.Column(db.String(20), default="Pending")
     round_name = db.Column(db.String(50))  # e.g., 'Quarter-Final', 'Semi-Final'
 
@@ -93,15 +93,6 @@ def edit_division(div_id):
         division.name = data.get("name", division.name)
         db.session.commit()
         return jsonify({"message": "Division updated"})
-
-
-# @app.route("/matches/<int:match_id>/schedule", methods=["PUT"])
-# def schedule_match(match_id):
-#     match = Match.query.get_or_404(match_id)
-#     match.ring_id = request.form.get("ring_id")
-#     match.match_number = int(match.ring_id) * 100 + int(request.form.get("ring_sequence"))
-#     db.session.commit()
-#     return jsonify({"message": f"Match {match_id} assigned to Ring {match.ring_id}"})
 
 
 @app.route("/matches/<int:match_id>/result", methods=["POST"])
@@ -585,11 +576,11 @@ def ui_record_result(match_id):
 
     match.status = status
 
-    if status == "Draw":
+    if status == "In Progress":
         db.session.commit()
         return f"""
         <div style="padding: 15px; background: #fef08a; color: #854d0e; border-radius: 8px; margin-bottom: 15px;">
-            Match {match.match_number} marked as Draw. Waiting for Golden Point resolution.
+            Match {match.match_number} Started. Waiting for results.
             <button onclick="location.reload()" style="margin-left: 10px; padding: 5px;">Refresh</button>
         </div>
         """

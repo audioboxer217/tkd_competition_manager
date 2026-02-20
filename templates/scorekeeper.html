@@ -168,7 +168,7 @@
                 <div class="competitor-select">
                     <div class="competitor-option">
                         <input type="radio" id="win-{{ match.id }}-1" name="winner_id"
-                            value="{{ match.competitor1_id }}" required>
+                            value="{{ match.competitor1_id }}" {{ "required" if match.status == "In Progress" else "disabled" }}>
                         <label for="win-{{ match.id }}-1" class="competitor-label blue-side">
                             Chung (Blue)<br>
                             <span style="color: #0f172a; font-size: 1.5rem;">{{ match.competitor1.name }}</span>
@@ -177,7 +177,7 @@
 
                     <div class="competitor-option">
                         <input type="radio" id="win-{{ match.id }}-2" name="winner_id"
-                            value="{{ match.competitor2_id }}">
+                            value="{{ match.competitor2_id }}" {{ "required" if match.status == "In Progress" else "disabled" }}>
                         <label for="win-{{ match.id }}-2" class="competitor-label red-side">
                             Hong (Red)<br>
                             <span style="color: #0f172a; font-size: 1.5rem;">{{ match.competitor2.name }}</span>
@@ -187,7 +187,9 @@
 
                 <div class="controls">
                     <select name="status" required>
-                        <option value="Completed" selected>Normal Win (PTF/PTG/SUP)</option>
+                        <option value="In Progress" {{ "selected" if match.status=="Pending" else "" }}>Start</option>
+                        <option value="Completed" {{ "selected" if match.status=="In Progress" else "disabled" }}>Normal Win (PTF/PTG/SUP)
+                        </option>
                         <option value="Disqualification">Win by Disqualification (DSQ)</option>
                     </select>
                     <button type="submit" class="submit-btn"
