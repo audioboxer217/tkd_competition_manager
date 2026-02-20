@@ -2,7 +2,7 @@ import math
 import random
 from collections import defaultdict
 
-from flask import Flask, jsonify, redirect, render_template, render_template_string, request
+from flask import Flask, jsonify, render_template, render_template_string, request
 from flask_sqlalchemy import SQLAlchemy
 
 app = Flask(__name__)
@@ -263,12 +263,7 @@ def get_bracket(div_id):
 # --- PAGE ROUTES ---
 @app.route("/", methods=["GET"])
 def index():
-    return redirect("/public")
-
-
-@app.route("/public")
-def public_view():
-    return render_template("public.html")
+    return render_template("index.html")
 
 
 @app.route("/admin")
