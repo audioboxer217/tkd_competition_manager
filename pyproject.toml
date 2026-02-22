@@ -1,7 +1,7 @@
 [project]
 name = "tkd-competition-manager"
 version = "0.1.0"
-description = "Add your description here"
+description = "Simple Flask-based Competition Manager for TKD Tournaments"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
