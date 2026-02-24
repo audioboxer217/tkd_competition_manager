@@ -13,6 +13,6 @@
         "project_name": "tkd-competition",
         "runtime": "python3.13",
         "s3_bucket": "zappa-tkd-competition-manager-dev",
-        "remote_env": "s3://tkd-competition-manager-dev/secrets.json"
+        "remote_env": "s3://zappa-tkd-competition-manager-dev/secrets.json"
     }
 }
