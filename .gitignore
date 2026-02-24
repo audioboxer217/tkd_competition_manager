@@ -11,3 +11,4 @@ wheels/
 
 # Environment Items
 .env
+*.env
