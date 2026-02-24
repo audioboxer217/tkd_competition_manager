@@ -1,12 +1,22 @@
 import math
+import os
 import random
 from collections import defaultdict
 
+from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, render_template_string, request
 from flask_sqlalchemy import SQLAlchemy
 
+# Fetch variables
+load_dotenv()
+USER = os.getenv("user")
+PASSWORD = os.getenv("password")
+HOST = os.getenv("host")
+PORT = os.getenv("port")
+DBNAME = os.getenv("dbname")
 app = Flask(__name__)
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///tournament.db"
+
+app.config["SQLALCHEMY_DATABASE_URI"] = f"postgresql+psycopg2://{USER}:{PASSWORD}@{HOST}:{PORT}/{DBNAME}?sslmode=require"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
 
@@ -626,6 +636,4 @@ def ui_record_result(match_id):
 
 # Initialize DB for testing
 if __name__ == "__main__":
-    with app.app_context():
-        db.create_all()
     app.run(host="0.0.0.0")

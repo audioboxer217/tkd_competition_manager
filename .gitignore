@@ -9,5 +9,5 @@ wheels/
 # Virtual environments
 .venv
 
-# Test DB
-instance/tournament.db
+# Environment Items
+.env
