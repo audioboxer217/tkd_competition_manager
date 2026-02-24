@@ -1,5 +1,7 @@
 {
     "dev": {
+        "domain": "tournament.okgp.kseppler.com",
+        "certificate_arn": "arn:aws:acm:us-east-1:799879571353:certificate/209f247a-f89a-4253-9b60-a453fbb3edc4",
         "app_function": "app.app",
         "aws_region": "us-east-1",
         "exclude": [
