@@ -30,6 +30,6 @@ jobs:
         run: uv run pytest
         env:
           DATABASE_URL: "sqlite:///:memory:"
-          SUPABASE_URL: "${{ vars.SUPABASE_URL }}"
-          SUPABASE_KEY: "${{ secrets.SUPABASE_KEY }}"
-          SECRET_KEY: "${{ secrets.SECRET_KEY }}"
+          SUPABASE_URL: "${{ vars.SUPABASE_URL || 'https://placeholder.supabase.co' }}"
+          SUPABASE_KEY: "${{ secrets.SUPABASE_KEY || 'test-supabase-key-for-ci' }}"
+          SECRET_KEY: "${{ secrets.SECRET_KEY || 'test-secret-key-for-ci' }}"
