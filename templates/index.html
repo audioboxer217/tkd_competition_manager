@@ -11,6 +11,7 @@
             background: #f8fafc;
             margin: 0;
             padding: 20px;
+            position: relative;
         }
 
         .header {
@@ -70,12 +71,15 @@
         }
 
         .btn-admin-login {
+            position: absolute;
+            top: 20px;
+            right: 20px;
             display: inline-block;
             background: #2563eb;
             color: white;
-            padding: 8px 18px;
+            padding: 5px 12px;
             border-radius: 4px;
-            font-size: 0.95rem;
+            font-size: 0.8rem;
             text-decoration: none;
         }
 
@@ -89,10 +93,11 @@
 
 <body>
 
+    <a href="/login" class="btn-admin-login">Admin Login</a>
+
     <div class="header">
         <h1>Live Tournament Status</h1>
         <p>Auto-updating every 15 seconds...</p>
-        <a href="/login" class="btn-admin-login">Admin Login</a>
     </div>
 
     <div class="ring-grid" hx-get="/ui/public_rings" hx-trigger="load, every 15s" hx-swap="innerHTML">
