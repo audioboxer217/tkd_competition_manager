@@ -1,7 +1,5 @@
 """Tests for every endpoint in the TKD Competition Manager Flask app."""
 
-import json
-
 import pytest
 
 from app import Competitor, Division, Match, Ring, db
