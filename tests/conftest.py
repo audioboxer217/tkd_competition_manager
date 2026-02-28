@@ -2,6 +2,10 @@ import os
 
 # Must be set before app.py is imported so the SQLite URI is used instead of PostgreSQL
 os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
+# Provide dummy values for required env vars so the app can start without real credentials
+os.environ.setdefault("SECRET_KEY", "test-secret-key-for-ci")
+os.environ.setdefault("SUPABASE_URL", "https://placeholder.supabase.co")
+os.environ.setdefault("SUPABASE_KEY", "test-supabase-key-for-ci")
 
 import pytest
 
