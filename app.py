@@ -1,3 +1,4 @@
+import logging
 import math
 import os
 import random
@@ -321,6 +322,9 @@ def login():
                 return redirect(next_url or url_for("admin_view"))
             except AuthApiError:
                 error = "Invalid email or password."
+            except Exception:
+                logging.exception("Unexpected error during Supabase authentication")
+                error = "Authentication is temporarily unavailable. Please try again later."
     return render_template("login.html", error=error)
 
 
