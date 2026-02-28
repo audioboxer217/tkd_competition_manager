@@ -160,7 +160,7 @@ def record_result(match_id):
 
         # --- BRACKET ADVANCEMENT LOGIC ---
         if match.next_match_id:
-            next_match = Match.query.get(match.next_match_id)
+            next_match = db.session.get(Match, match.next_match_id)
             # Assign the winner to the next match's open slot
             if not next_match.competitor1_id:
                 next_match.competitor1_id = winner_id
@@ -287,7 +287,7 @@ def get_bracket(div_id):
     def get_comp_data(comp_id):
         if not comp_id:
             return None
-        comp = Competitor.query.get(comp_id)
+        comp = db.session.get(Competitor, comp_id)
         return {"id": comp.id, "name": comp.name} if comp else None
 
     bracket_data = []
@@ -351,7 +351,7 @@ def admin_view():
 
 @app.route("/ui/divisions/<int:div_id>/bracket", methods=["GET"])
 def brack(div_id):
-    return render_template("bracket_view.html", division=Division.query.get(div_id))
+    return render_template("bracket_view.html", division=db.session.get(Division, div_id))
 
 
 @app.route("/divisions/<int:div_id>/bracket_ui", methods=["GET"])
@@ -364,8 +364,8 @@ def get_bracket_ui(div_id):
     # Group matches by round name directly in Python
     grouped_matches = defaultdict(list)
     for match in matches:
-        match.competitor1_name = Competitor.query.get(match.competitor1_id).name if match.competitor1_id else "TBD"
-        match.competitor2_name = Competitor.query.get(match.competitor2_id).name if match.competitor2_id else "TBD"
+        match.competitor1_name = db.session.get(Competitor, match.competitor1_id).name if match.competitor1_id else "TBD"
+        match.competitor2_name = db.session.get(Competitor, match.competitor2_id).name if match.competitor2_id else "TBD"
         grouped_matches[match.round_name].append(match)
 
     # Optional: Sort the dictionary so "Round 1" comes before "Quarter-Final", etc.
@@ -695,7 +695,7 @@ def ui_record_result(match_id):
 
         # --- BRACKET ADVANCEMENT LOGIC ---
         if match.next_match_id:
-            next_match = Match.query.get(match.next_match_id)
+            next_match = db.session.get(Match, match.next_match_id)
             # Push the winner into the next match's open slot
             if not next_match.competitor1_id:
                 next_match.competitor1_id = match.winner_id
@@ -704,7 +704,7 @@ def ui_record_result(match_id):
 
         db.session.commit()
 
-        winner = Competitor.query.get(match.winner_id)
+        winner = db.session.get(Competitor, match.winner_id)
 
         # Return a success message that replaces the match card
         return f"""
