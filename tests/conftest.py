@@ -38,3 +38,4 @@ def clean_db(app):
     for table in reversed(_db.metadata.sorted_tables):
         _db.session.execute(table.delete())
     _db.session.commit()
+    _db.session.remove()
