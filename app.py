@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 from dotenv import load_dotenv
 from flask import Flask, Response, jsonify, redirect, render_template, render_template_string, request, session, url_for
 from flask_sqlalchemy import SQLAlchemy
+from flask_wtf.csrf import CSRFProtect
 from supabase import create_client
 from supabase_auth.errors import AuthApiError
 
@@ -24,14 +25,19 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 SECRET_KEY = os.getenv("SECRET_KEY")
 if not SECRET_KEY:
     raise RuntimeError("SECRET_KEY environment variable must be set.")
+if not SUPABASE_URL:
+    raise RuntimeError("SUPABASE_URL environment variable must be set.")
+if not SUPABASE_KEY:
+    raise RuntimeError("SUPABASE_KEY environment variable must be set.")
 app = Flask(__name__)
 
 app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL") or f"postgresql+psycopg2://{USER}:{PASSWORD}@{HOST}:{PORT}/{DBNAME}?sslmode=require"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SECRET_KEY"] = SECRET_KEY
 db = SQLAlchemy(app)
+csrf = CSRFProtect(app)
 
-supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_URL and SUPABASE_KEY else None
+supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
 def login_required(f):
@@ -309,22 +315,19 @@ def login():
     if request.method == "POST":
         email = request.form.get("email")
         password = request.form.get("password")
-        if not supabase_client:
-            error = "Authentication is not configured."
-        else:
-            try:
-                auth_response = supabase_client.auth.sign_in_with_password({"email": email, "password": password})
-                session["user"] = {"email": auth_response.user.email, "id": str(auth_response.user.id)}
-                next_url = request.form.get("next", "")
-                parsed = urlparse(next_url)
-                if parsed.scheme or parsed.netloc:
-                    next_url = url_for("admin_view")
-                return redirect(next_url or url_for("admin_view"))
-            except AuthApiError:
-                error = "Invalid email or password."
-            except Exception:
-                logging.exception("Unexpected error during Supabase authentication")
-                error = "Authentication is temporarily unavailable. Please try again later."
+        try:
+            auth_response = supabase_client.auth.sign_in_with_password({"email": email, "password": password})
+            session["user"] = {"email": auth_response.user.email, "id": str(auth_response.user.id)}
+            next_url = request.form.get("next", "")
+            parsed = urlparse(next_url)
+            if parsed.scheme or parsed.netloc:
+                next_url = url_for("admin_view")
+            return redirect(next_url or url_for("admin_view"))
+        except AuthApiError:
+            error = "Invalid email or password."
+        except Exception:
+            logging.exception("Unexpected error during Supabase authentication")
+            error = "Authentication is temporarily unavailable. Please try again later."
     return render_template("login.html", error=error)
 
 

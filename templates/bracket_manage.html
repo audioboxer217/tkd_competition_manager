@@ -113,7 +113,7 @@
     </style>
 </head>
 
-<body>
+<body hx-headers='{"X-CSRFToken": "{{ csrf_token() }}"}'>
 
     <div class="header">
         <h1 style="margin: 0; color: #0f172a;">Manage Bracket: {{ division.name }}</h1>
