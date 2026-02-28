@@ -242,7 +242,7 @@ class TestMatchResultAPI:
 
         # The winner should appear in the next match
         db.session.expire_all()
-        next_match = Match.query.get(match.next_match_id)
+        next_match = db.session.get(Match, match.next_match_id)
         assert next_match.competitor1_id == winner_id or next_match.competitor2_id == winner_id
 
 
@@ -275,7 +275,7 @@ class TestUIRings:
         resp = client.delete(f"/ui/rings/{ring.id}")
         assert resp.status_code == 200
         assert resp.data == b""
-        assert Ring.query.get(ring.id) is None
+        assert db.session.get(Ring, ring.id) is None
 
     def test_ui_delete_ring_not_found(self, client):
         resp = client.delete("/ui/rings/9999")
@@ -315,7 +315,7 @@ class TestUIDivisions:
         resp = client.delete(f"/ui/divisions/{div.id}")
         assert resp.status_code == 200
         assert resp.data == b""
-        assert Division.query.get(div.id) is None
+        assert db.session.get(Division, div.id) is None
 
     def test_ui_delete_division_not_found(self, client):
         resp = client.delete("/ui/divisions/9999")
