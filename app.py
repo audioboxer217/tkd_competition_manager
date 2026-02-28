@@ -2,10 +2,14 @@ import math
 import os
 import random
 from collections import defaultdict
+from functools import wraps
+from urllib.parse import urlparse
 
 from dotenv import load_dotenv
-from flask import Flask, jsonify, render_template, render_template_string, request
+from flask import Flask, Response, jsonify, redirect, render_template, render_template_string, request, session, url_for
 from flask_sqlalchemy import SQLAlchemy
+from supabase import create_client
+from supabase_auth.errors import AuthApiError
 
 # Fetch variables
 load_dotenv()
@@ -14,11 +18,33 @@ PASSWORD = os.getenv("password")
 HOST = os.getenv("host")
 PORT = os.getenv("port")
 DBNAME = os.getenv("dbname")
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    raise RuntimeError("SECRET_KEY environment variable must be set.")
 app = Flask(__name__)
 
 app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL") or f"postgresql+psycopg2://{USER}:{PASSWORD}@{HOST}:{PORT}/{DBNAME}?sslmode=require"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config["SECRET_KEY"] = SECRET_KEY
 db = SQLAlchemy(app)
+
+supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_URL and SUPABASE_KEY else None
+
+
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get("user"):
+            if request.headers.get("HX-Request"):
+                resp = Response("Unauthorized", status=401)
+                resp.headers["HX-Redirect"] = url_for("login")
+                return resp
+            return redirect(url_for("login", next=request.path))
+        return f(*args, **kwargs)
+
+    return decorated_function
 
 
 class Ring(db.Model):
@@ -65,6 +91,7 @@ class Match(db.Model):
 
 # --- RING MANAGEMENT ---
 @app.route("/rings", methods=["POST", "GET"])
+@login_required
 def manage_rings():
     if request.method == "POST":
         data = request.json
@@ -79,6 +106,7 @@ def manage_rings():
 
 # --- DIVISION MANAGEMENT ---
 @app.route("/divisions", methods=["POST", "GET"])
+@login_required
 def manage_divisions():
     if request.method == "POST":
         data = request.json
@@ -92,6 +120,7 @@ def manage_divisions():
 
 
 @app.route("/divisions/<int:div_id>", methods=["DELETE", "PUT"])
+@login_required
 def edit_division(div_id):
     division = Division.query.get_or_404(div_id)
     if request.method == "DELETE":
@@ -106,6 +135,7 @@ def edit_division(div_id):
 
 
 @app.route("/matches/<int:match_id>/result", methods=["POST"])
+@login_required
 def record_result(match_id):
     match = Match.query.get_or_404(match_id)
     data = request.json
@@ -135,6 +165,7 @@ def record_result(match_id):
 
 
 @app.route("/divisions/<int:div_id>/generate_bracket", methods=["POST"])
+@login_required
 def generate_bracket(div_id):
     # division = Division.query.get_or_404(div_id)
     competitors = Competitor.query.filter_by(division_id=div_id).all()
@@ -270,6 +301,35 @@ def get_bracket(div_id):
     return jsonify(bracket_data), 200
 
 
+# --- AUTH ROUTES ---
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    error = None
+    if request.method == "POST":
+        email = request.form.get("email")
+        password = request.form.get("password")
+        if not supabase_client:
+            error = "Authentication is not configured."
+        else:
+            try:
+                auth_response = supabase_client.auth.sign_in_with_password({"email": email, "password": password})
+                session["user"] = {"email": auth_response.user.email, "id": str(auth_response.user.id)}
+                next_url = request.form.get("next", "")
+                parsed = urlparse(next_url)
+                if parsed.scheme or parsed.netloc:
+                    next_url = url_for("admin_view")
+                return redirect(next_url or url_for("admin_view"))
+            except AuthApiError:
+                error = "Invalid email or password."
+    return render_template("login.html", error=error)
+
+
+@app.route("/logout", methods=["POST"])
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
+
+
 # --- PAGE ROUTES ---
 @app.route("/", methods=["GET"])
 def index():
@@ -277,6 +337,7 @@ def index():
 
 
 @app.route("/admin")
+@login_required
 def admin_view():
     return render_template("admin.html")
 
@@ -354,6 +415,7 @@ def ui_public_rings():
 
 
 @app.route("/ui/rings", methods=["POST"])
+@login_required
 def ui_add_ring():
     name = request.form.get("name")
     new_ring = Ring(name=name)
@@ -375,6 +437,7 @@ def ui_add_ring():
 
 
 @app.route("/ui/rings_list")
+@login_required
 def ui_rings_list():
     rings = Ring.query.all()
     html = ""
@@ -400,6 +463,7 @@ def ui_rings_list():
 
 
 @app.route("/ui/rings/<int:ring_id>", methods=["DELETE"])
+@login_required
 def ui_delete_ring(ring_id):
     ring = Ring.query.get_or_404(ring_id)
     db.session.delete(ring)
@@ -412,6 +476,7 @@ def ui_delete_ring(ring_id):
 
 
 @app.route("/ui/divisions", methods=["POST"])
+@login_required
 def ui_add_division():
     name = request.form.get("name")
     new_div = Division(name=name)
@@ -438,6 +503,7 @@ def ui_add_division():
 
 
 @app.route("/ui/divisions_list")
+@login_required
 def ui_divisions_list():
     divisions = Division.query.all()
     html = ""
@@ -463,6 +529,7 @@ def ui_divisions_list():
 
 
 @app.route("/ui/divisions/<int:div_id>", methods=["DELETE"])
+@login_required
 def ui_delete_division(div_id):
     div = Division.query.get_or_404(div_id)
 
@@ -476,12 +543,14 @@ def ui_delete_division(div_id):
 
 
 @app.route("/admin/divisions/<int:div_id>/setup")
+@login_required
 def admin_division_setup(div_id):
     division = Division.query.get_or_404(div_id)
     return render_template("division_setup.html", division=division)
 
 
 @app.route("/ui/divisions/<int:div_id>/competitors", methods=["POST"])
+@login_required
 def ui_add_competitors(div_id):
     names_text = request.form.get("names")
 
@@ -501,6 +570,7 @@ def ui_add_competitors(div_id):
 
 
 @app.route("/ui/divisions/<int:div_id>/competitors_list")
+@login_required
 def ui_competitors_list(div_id):
     competitors = Competitor.query.filter_by(division_id=div_id).all()
     if not competitors:
@@ -509,6 +579,7 @@ def ui_competitors_list(div_id):
 
 
 @app.route("/admin/divisions/<int:div_id>/bracket_manage")
+@login_required
 def manage_bracket_page(div_id):
     division = Division.query.get_or_404(div_id)
     matches = Match.query.filter_by(division_id=div_id).all()
@@ -523,6 +594,7 @@ def manage_bracket_page(div_id):
 
 
 @app.route("/matches/<int:match_id>/schedule", methods=["PUT"])
+@login_required
 def schedule_match_htmx(match_id):
     match = Match.query.get_or_404(match_id)
 
@@ -569,6 +641,7 @@ def schedule_match_htmx(match_id):
 
 # --- SCOREKEEPER ROUTES ---
 @app.route("/ring/<int:ring_id>/scorekeeper")
+@login_required
 def ring_scorekeeper(ring_id):
     ring = Ring.query.get_or_404(ring_id)
 
@@ -589,6 +662,7 @@ def ring_scorekeeper(ring_id):
 
 
 @app.route("/ui/matches/<int:match_id>/result", methods=["POST"])
+@login_required
 def ui_record_result(match_id):
     match = Match.query.get_or_404(match_id)
 

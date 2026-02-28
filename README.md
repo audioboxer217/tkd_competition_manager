@@ -22,6 +22,7 @@ A lightweight, web-based tournament management system built with Python (Flask) 
 
 - Python 3.13
 - uv (installation instructions [here](https://docs.astral.sh/uv/getting-started/installation/))
+- A [Supabase](https://supabase.com) project for authentication
 
 ## Installation
 
@@ -29,6 +30,22 @@ A lightweight, web-based tournament management system built with Python (Flask) 
 2. Install the required dependencies:
    ```bash
    uv sync
+   ```
+3. Create a `.env` file with the required environment variables:
+   ```
+   # PostgreSQL database connection
+   user=<db_user>
+   password=<db_password>
+   host=<db_host>
+   port=<db_port>
+   dbname=<db_name>
+
+   # Supabase authentication
+   SUPABASE_URL=https://<your-project>.supabase.co
+   SUPABASE_KEY=<your-supabase-anon-key>
+
+   # Flask session secret key (generate a strong random value)
+   SECRET_KEY=<your-secret-key>
    ```
 
 ## Running the Application
