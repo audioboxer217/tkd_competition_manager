@@ -30,15 +30,9 @@ def _generate_bracket(client, div_id):
     return client.post(f"/divisions/{div_id}/generate_bracket")
 
 
-def _get_first_match(div_id):
-    return Match.query.filter_by(division_id=div_id).first()
-
-
 # ---------------------------------------------------------------------------
 # Ring API endpoints
 # ---------------------------------------------------------------------------
-
-
 class TestRingAPI:
     def test_get_rings_empty(self, client):
         resp = client.get("/rings")
