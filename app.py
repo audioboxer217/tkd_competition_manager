@@ -385,7 +385,11 @@ def ui_public_rings():
     # Find active/upcoming matches for each ring
     ring_data = []
     for ring in rings:
-        matches = Match.query.filter(Match.ring_id == ring.id, Match.status.in_(["Pending", "In Progress"])).order_by(
+        matches = Match.query.filter(
+            Match.ring_id == ring.id,
+            Match.status.in_(["Pending", "In Progress"]),
+            Match.match_number.isnot(None),
+        ).order_by(
             case((Match.status == "In Progress", 0), else_=1), Match.match_number
         ).all()
         for match in matches:
