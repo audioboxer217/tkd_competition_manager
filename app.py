@@ -616,8 +616,45 @@ def schedule_match_htmx(match_id):
     ring_sequence = request.form.get("ring_sequence")  # e.g., the '25' in 525
 
     if ring_id and ring_sequence:
-        match.ring_id = int(ring_id)
-        match.match_number = (int(ring_id) * 100) + int(ring_sequence)
+        try:
+            ring_id_int = int(ring_id)
+            ring_sequence_int = int(ring_sequence)
+        except ValueError:
+            return "Invalid ring_id or ring_sequence value.", 400
+        proposed_match_number = (ring_id_int * 100) + ring_sequence_int
+        duplicate = Match.query.filter(
+            Match.match_number == proposed_match_number, Match.id != match.id
+        ).first()
+        if duplicate:
+            rings = Ring.query.all()
+            ring_options = "".join(
+                [f'<option value="{r.id}" {"selected" if r.id == ring_id_int else ""}>{r.name}</option>' for r in rings]
+            )
+            return f"""
+    <div class="match-card" id="match-{match.id}">
+        <div class="match-body">
+            <div><font style="color: #252ceb; font-weight: bold;">Chung</font>: {match.competitor1.name if match.competitor1 else "TBD"}</div>
+            <div><font style="color: #eb2525; font-weight: bold;">Hong</font>: {match.competitor2.name if match.competitor2 else "TBD"}</div>
+        </div>
+        <div class="schedule-form">
+            <div style="margin-bottom: 8px; color: #dc2626; font-weight: bold;">
+                Error: Match {proposed_match_number} is already assigned to another match.
+            </div>
+            <form hx-put="/matches/{match.id}/schedule" hx-target="#match-{match.id}"
+                        hx-swap="outerHTML" style="display: flex; gap: 5px;">
+                <select name="ring_id" required style="flex: 1;">
+                    <option value="">Select Ring...</option>
+                    {ring_options}
+                </select>
+                <input type="number" name="ring_sequence" value="{ring_sequence_int}" required
+                    style="width: 80px;">
+                <button type="submit" class="save-btn">Save</button>
+            </form>
+        </div>
+    </div>
+    """
+        match.ring_id = ring_id_int
+        match.match_number = proposed_match_number
         db.session.commit()
 
     # Fetch rings again to populate the dropdown in the response
