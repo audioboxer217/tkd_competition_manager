@@ -315,14 +315,38 @@ class TestUIRings:
         assert resp.status_code == 200
         body = resp.data.decode()
 
-        pos_101 = body.index("101")
-        pos_102 = body.index("102")
-        pos_103 = body.index("103")
+        pos_101 = body.index("<strong>101</strong>")
+        pos_102 = body.index("<strong>102</strong>")
+        pos_103 = body.index("<strong>103</strong>")
         # In Progress match (101) should appear before Pending matches (102, 103)
         assert pos_101 < pos_102
         assert pos_101 < pos_103
         # Pending matches should be sorted by match_number
         assert pos_102 < pos_103
+
+    def test_ui_public_rings_null_match_number_excluded(self, client):
+        """Matches without a match_number are excluded from the Live View."""
+        ring = Ring(name="Ring 1")
+        division = Division(name="Test Division")
+        db.session.add_all([ring, division])
+        db.session.flush()
+
+        c1 = Competitor(name="Alice Smith", division_id=division.id)
+        c2 = Competitor(name="Bob Jones", division_id=division.id)
+        db.session.add_all([c1, c2])
+        db.session.flush()
+
+        m_no_number = Match(
+            ring_id=ring.id, division_id=division.id, competitor1_id=c1.id,
+            competitor2_id=c2.id, status="Pending", match_number=None, round_name="Round 1"
+        )
+        db.session.add(m_no_number)
+        db.session.commit()
+
+        resp = client.get("/ui/public_rings")
+        assert resp.status_code == 200
+        assert b"Alice Smith" not in resp.data
+        assert b"Bob Jones" not in resp.data
 
 
 # ---------------------------------------------------------------------------
