@@ -466,6 +466,35 @@ class TestMatchSchedule:
         )
         assert resp.status_code == 404
 
+    def test_schedule_duplicate_match_number(self, client):
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_id1 = _create_division(client, "Male - Black Belt - Under 70kg").get_json()["id"]
+        div_id2 = _create_division(client, "Female - Black Belt - Under 60kg").get_json()["id"]
+        _add_competitors(client, div_id1, ["Alice", "Bob"])
+        _add_competitors(client, div_id2, ["Carol", "Dave"])
+        _generate_bracket(client, div_id1)
+        _generate_bracket(client, div_id2)
+
+        match1 = Match.query.filter_by(division_id=div_id1).first()
+        match2 = Match.query.filter_by(division_id=div_id2).first()
+
+        # Schedule first match successfully
+        resp1 = client.put(
+            f"/matches/{match1.id}/schedule",
+            data={"ring_id": str(ring_id), "ring_sequence": "1"},
+        )
+        assert resp1.status_code == 200
+        assert match1.match_number == (ring_id * 100) + 1
+
+        # Attempt to assign the same match number to a second match
+        resp2 = client.put(
+            f"/matches/{match2.id}/schedule",
+            data={"ring_id": str(ring_id), "ring_sequence": "1"},
+        )
+        assert resp2.status_code == 200
+        assert b"Error" in resp2.data
+        assert match2.match_number is None
+
 
 # ---------------------------------------------------------------------------
 # Page / full-HTML routes
