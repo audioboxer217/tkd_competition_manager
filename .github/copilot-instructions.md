@@ -21,7 +21,7 @@ This is a lightweight, web-based **Taekwondo Competition Manager** built with Py
 - `init_db.py` — Script to initialize the database schema
 - `reset_db.py` — Script to reset the database
 - `test_db.py` — Script to test the database connection
-- `update_secrets.py` — Script to update AWS Secrets Manager / environment secrets
+- `update_secrets.py` — Script to upload `secrets.json` configuration to an S3 bucket
 - `pyproject.toml` — Project dependencies (managed with `uv`)
 - `zappa_settings.json` — AWS Lambda deployment configuration
 - `Containerfile` — Container image definition
