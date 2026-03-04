@@ -17,9 +17,11 @@ This is a lightweight, web-based **Taekwondo Competition Manager** built with Py
 
 - `app.py` — Main application: Flask app, SQLAlchemy models, all route handlers
 - `templates/` — Jinja2 HTML templates
+- `tests/` — Pytest test suite (`conftest.py` fixtures + `test_app.py`)
 - `init_db.py` — Script to initialize the database schema
 - `reset_db.py` — Script to reset the database
 - `test_db.py` — Script to test the database connection
+- `update_secrets.py` — Script to update AWS Secrets Manager / environment secrets
 - `pyproject.toml` — Project dependencies (managed with `uv`)
 - `zappa_settings.json` — AWS Lambda deployment configuration
 - `Containerfile` — Container image definition
@@ -35,13 +37,28 @@ This is a lightweight, web-based **Taekwondo Competition Manager** built with Py
 
 - Run the app locally with `uv run flask run`
 - Install dependencies with `uv sync`
+- Run tests with `uv run pytest` (uses SQLite in-memory; no PostgreSQL needed for tests)
 - Environment variables (`user`, `password`, `host`, `port`, `dbname`) are loaded from a `.env` file using `python-dotenv`
+- Required environment variables:
+  - `SECRET_KEY` — Flask session secret key (required at startup)
+  - `SUPABASE_URL` — URL of the Supabase project used for authentication (required at startup)
+  - `SUPABASE_KEY` — Supabase anonymous/service key (required at startup)
+  - `DATABASE_URL` — Full PostgreSQL URI (optional; takes precedence over individual `user`/`password`/`host`/`port`/`dbname` vars); set to `sqlite:///:memory:` for tests
+  - `user`, `password`, `host`, `port`, `dbname` — Individual PostgreSQL connection components (used when `DATABASE_URL` is not set)
 - Routes follow a pattern:
   - `/ui/...` — HTMX fragment routes that return partial HTML
   - `/admin/...` — Admin page routes that return full HTML templates
   - `/divisions/...`, `/rings/...`, `/matches/...` — JSON API routes
 - HTMX responses return HTML fragments (not JSON); use `render_template_string` or f-strings for simple fragments
 - Use Flask-SQLAlchemy ORM patterns; avoid raw SQL
+
+## Authentication
+
+- Authentication is handled by [Supabase Auth](https://supabase.com/docs/guides/auth)
+- The `supabase_client` (created from `SUPABASE_URL` + `SUPABASE_KEY`) is used for sign-in and sign-out
+- Protected routes use the `@login_required` decorator, which checks `session["user"]`
+- HTMX requests that fail authentication receive an `HX-Redirect` response header pointing to `/login`
+- CSRF protection is enabled globally via Flask-WTF (`CSRFProtect`); tests set `WTF_CSRF_ENABLED = False`
 
 ## Coding Conventions
 
