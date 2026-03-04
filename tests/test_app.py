@@ -1,5 +1,7 @@
 """Tests for every endpoint in the TKD Competition Manager Flask app."""
 
+import re
+
 import pytest
 
 from app import Competitor, Division, Match, Ring, db
@@ -315,14 +317,8 @@ class TestUIRings:
         assert resp.status_code == 200
         body = resp.data.decode()
 
-        pos_101 = body.index("<strong>101</strong>")
-        pos_102 = body.index("<strong>102</strong>")
-        pos_103 = body.index("<strong>103</strong>")
-        # In Progress match (101) should appear before Pending matches (102, 103)
-        assert pos_101 < pos_102
-        assert pos_101 < pos_103
-        # Pending matches should be sorted by match_number
-        assert pos_102 < pos_103
+        rendered_numbers = [int(n) for n in re.findall(r"<strong>(\d+)</strong>", body)]
+        assert rendered_numbers == [101, 102, 103]
 
     def test_ui_public_rings_null_match_number_excluded(self, client):
         """Matches without a match_number are excluded from the Live View."""
