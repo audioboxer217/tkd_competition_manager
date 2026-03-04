@@ -495,6 +495,19 @@ class TestMatchSchedule:
         assert b"Error" in resp2.data
         assert match2.match_number is None
 
+    def test_schedule_match_sequence_out_of_range(self, client):
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_id = _create_division(client).get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _generate_bracket(client, div_id)
+
+        match = Match.query.filter_by(division_id=div_id).first()
+        resp = client.put(
+            f"/matches/{match.id}/schedule",
+            data={"ring_id": str(ring_id), "ring_sequence": "100"},
+        )
+        assert resp.status_code == 400
+
 
 # ---------------------------------------------------------------------------
 # Page / full-HTML routes

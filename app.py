@@ -614,6 +614,8 @@ def schedule_match_htmx(match_id):
             ring_sequence_int = int(ring_sequence)
         except ValueError:
             return "Invalid ring_id or ring_sequence value.", 400
+        if not (1 <= ring_sequence_int <= 99):
+            return "ring_sequence must be between 1 and 99.", 400
         proposed_match_number = (ring_id_int * 100) + ring_sequence_int
         duplicate = Match.query.filter(
             Match.match_number == proposed_match_number, Match.id != match.id
@@ -668,13 +670,13 @@ def schedule_match_htmx(match_id):
             <div style="margin-bottom: 8px; font-weight: bold; color: #2563eb;">
                 Scheduled: {"Match " + str(match.match_number) if match.match_number else "Unassigned"}
             </div>
-            <form hx-put="/matches/{{ match.id }}/schedule" hx-target="#match-{{ match.id }}"
+            <form hx-put="/matches/{match.id}/schedule" hx-target="#match-{match.id}"
                         hx-swap="outerHTML" style="display: flex; gap: 5px;">
                 <select name="ring_id" required style="flex: 1;">
                     <option value="">Select Ring...</option>
                     {ring_options}
                 </select>
-                <input type="number" name="ring_sequence" value="{int(ring_sequence)}" required
+                <input type="number" name="ring_sequence" value="{match.match_number - match.ring_id * 100 if match.match_number else ''}" required
                     style="width: 80px;">
                 <button type="submit" class="save-btn">Save</button>
             </form>
