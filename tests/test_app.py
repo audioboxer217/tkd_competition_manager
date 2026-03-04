@@ -285,6 +285,45 @@ class TestUIRings:
         resp = client.get("/ui/public_rings")
         assert resp.status_code == 200
 
+    def test_ui_public_rings_sort_order(self, client):
+        """In Progress matches appear before Pending, then sorted by match_number."""
+        ring = Ring(name="Ring 1")
+        division = Division(name="Test Division")
+        db.session.add_all([ring, division])
+        db.session.flush()
+
+        c1 = Competitor(name="Alice Smith", division_id=division.id)
+        c2 = Competitor(name="Bob Jones", division_id=division.id)
+        c3 = Competitor(name="Carol White", division_id=division.id)
+        c4 = Competitor(name="Dave Brown", division_id=division.id)
+        db.session.add_all([c1, c2, c3, c4])
+        db.session.flush()
+
+        # match_number 102 is Pending but lower number
+        m1 = Match(ring_id=ring.id, division_id=division.id, competitor1_id=c1.id,
+                   competitor2_id=c2.id, status="Pending", match_number=102, round_name="Round 1")
+        # match_number 101 is In Progress — should appear first despite being created second
+        m2 = Match(ring_id=ring.id, division_id=division.id, competitor1_id=c3.id,
+                   competitor2_id=c4.id, status="In Progress", match_number=101, round_name="Round 1")
+        # match_number 103 is Pending
+        m3 = Match(ring_id=ring.id, division_id=division.id, competitor1_id=c1.id,
+                   competitor2_id=c3.id, status="Pending", match_number=103, round_name="Semi-Final")
+        db.session.add_all([m1, m2, m3])
+        db.session.commit()
+
+        resp = client.get("/ui/public_rings")
+        assert resp.status_code == 200
+        body = resp.data.decode()
+
+        pos_101 = body.index("101")
+        pos_102 = body.index("102")
+        pos_103 = body.index("103")
+        # In Progress match (101) should appear before Pending matches (102, 103)
+        assert pos_101 < pos_102
+        assert pos_101 < pos_103
+        # Pending matches should be sorted by match_number
+        assert pos_102 < pos_103
+
 
 # ---------------------------------------------------------------------------
 # HTMX UI – Division routes

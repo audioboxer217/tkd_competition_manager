@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 from dotenv import load_dotenv
 from flask import Flask, Response, jsonify, redirect, render_template, render_template_string, request, session, url_for
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import case
 from flask_wtf.csrf import CSRFProtect
 from supabase import create_client
 from supabase_auth.errors import AuthApiError
@@ -384,7 +385,9 @@ def ui_public_rings():
     # Find active/upcoming matches for each ring
     ring_data = []
     for ring in rings:
-        matches = Match.query.filter(Match.ring_id == ring.id, Match.status.in_(["Pending", "In Progress"])).all()
+        matches = Match.query.filter(Match.ring_id == ring.id, Match.status.in_(["Pending", "In Progress"])).order_by(
+            case((Match.status == "In Progress", 0), else_=1), Match.match_number
+        ).all()
         for match in matches:
             match.comp_1 = (
                 f"{match.competitor1.name.split()[0][0]}. {match.competitor1.name.split()[-1]}" if match.competitor1 else "TBD"
