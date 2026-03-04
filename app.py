@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 from flask import Flask, Response, jsonify, redirect, render_template, render_template_string, request, session, url_for
+from markupsafe import escape
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import case
 from flask_wtf.csrf import CSRFProtect
@@ -630,13 +631,15 @@ def schedule_match_htmx(match_id):
         if duplicate:
             rings = Ring.query.all()
             ring_options = "".join(
-                [f'<option value="{r.id}" {"selected" if r.id == ring_id_int else ""}>{r.name}</option>' for r in rings]
+                [f'<option value="{r.id}" {"selected" if r.id == ring_id_int else ""}>{escape(r.name)}</option>' for r in rings]
             )
+            chung_name = escape(match.competitor1.name) if match.competitor1 else "TBD"
+            hong_name = escape(match.competitor2.name) if match.competitor2 else "TBD"
             return f"""
     <div class="match-card" id="match-{match.id}">
         <div class="match-body">
-            <div><font style="color: #252ceb; font-weight: bold;">Chung</font>: {match.competitor1.name if match.competitor1 else "TBD"}</div>
-            <div><font style="color: #eb2525; font-weight: bold;">Hong</font>: {match.competitor2.name if match.competitor2 else "TBD"}</div>
+            <div><font style="color: #252ceb; font-weight: bold;">Chung</font>: {chung_name}</div>
+            <div><font style="color: #eb2525; font-weight: bold;">Hong</font>: {hong_name}</div>
         </div>
         <div class="schedule-form">
             <div style="margin-bottom: 8px; color: #dc2626; font-weight: bold;">
@@ -662,15 +665,17 @@ def schedule_match_htmx(match_id):
     # Fetch rings again to populate the dropdown in the response
     rings = Ring.query.all()
     ring_options = "".join(
-        [f'<option value="{r.id}" {"selected" if r.id == match.ring_id else ""}>{r.name}</option>' for r in rings]
+        [f'<option value="{r.id}" {"selected" if r.id == match.ring_id else ""}>{escape(r.name)}</option>' for r in rings]
     )
+    chung_name = escape(match.competitor1.name) if match.competitor1 else "TBD"
+    hong_name = escape(match.competitor2.name) if match.competitor2 else "TBD"
 
     # Return the updated match card HTML
     return f"""
     <div class="match-card" id="match-{match.id}">
         <div class="match-body">
-            <div><font style="color: #252ceb; font-weight: bold;">Chung</font>: {match.competitor1.name if match.competitor1 else "TBD"}</div>
-            <div><font style="color: #eb2525; font-weight: bold;">Hong</font>: {match.competitor2.name if match.competitor2 else "TBD"}</div>
+            <div><font style="color: #252ceb; font-weight: bold;">Chung</font>: {chung_name}</div>
+            <div><font style="color: #eb2525; font-weight: bold;">Hong</font>: {hong_name}</div>
         </div>
         
         <div class="schedule-form">
