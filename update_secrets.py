@@ -14,9 +14,21 @@ def main(env: str, debug: bool = False):
     HOST = os.getenv("host")
     PORT = os.getenv("port")
     DBNAME = os.getenv("dbname")
+    SUPABASE_URL = os.getenv("SUPABASE_URL")
+    SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+    SECRET_KEY = os.getenv("SECRET_KEY")
 
     # Your JSON data as a Python dictionary or list
-    data = {"user": USER, "password": PASSWORD, "host": HOST, "port": PORT, "dbname": DBNAME}
+    data = {
+        "user": USER, 
+        "password": PASSWORD, 
+        "host": HOST, 
+        "port": PORT, 
+        "dbname": DBNAME,
+        "SUPABASE_URL": SUPABASE_URL,
+        "SUPABASE_KEY": SUPABASE_KEY,
+        "SECRET_KEY": SECRET_KEY,
+    }
 
     # Convert the Python object to a JSON formatted string
     json_string = json.dumps(data)
