@@ -55,7 +55,7 @@ This is a lightweight, web-based **Taekwondo Competition Manager** built with Py
 ## Authentication
 
 - Authentication is handled by [Supabase Auth](https://supabase.com/docs/guides/auth)
-- The `supabase_client` (created from `SUPABASE_URL` + `SUPABASE_KEY`) is used for sign-in and sign-out
+- The `supabase_client` (created from `SUPABASE_URL` + `SUPABASE_KEY`) is used for user sign-in; sign-out currently only clears the Flask session in the `/logout` route (no Supabase `sign_out` call)
 - Protected routes use the `@login_required` decorator, which checks `session["user"]`
 - HTMX requests that fail authentication receive an `HX-Redirect` response header pointing to `/login`
 - CSRF protection is enabled globally via Flask-WTF (`CSRFProtect`); tests set `WTF_CSRF_ENABLED = False`
