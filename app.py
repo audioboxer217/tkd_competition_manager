@@ -1,7 +1,6 @@
 import logging
 import math
 import os
-import random
 from collections import defaultdict
 from functools import wraps
 from urllib.parse import urlparse
@@ -210,7 +209,7 @@ def generate_bracket(div_id):
     Match.query.filter_by(division_id=div_id).delete()
     db.session.flush()
 
-    competitors = Competitor.query.filter_by(division_id=div_id).all()
+    competitors = Competitor.query.filter_by(division_id=div_id).order_by(Competitor.position).all()
 
     num_comp = len(competitors)
     if num_comp < 2:
@@ -222,8 +221,7 @@ def generate_bracket(div_id):
     next_power_of_2 = 2 ** math.ceil(math.log2(num_comp))
     num_first_round_matches = next_power_of_2 // 2
 
-    # 2. Distribute competitors to avoid empty branches
-    random.shuffle(competitors)
+    # 2. Distribute competitors into bracket slots in roster order
     match_pairings = [[None, None] for _ in range(num_first_round_matches)]
 
     # Deal competitors into the pairings like a deck of cards
