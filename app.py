@@ -200,7 +200,7 @@ def _division_name_display_html(division):
     """Return HTML fragment for the division name with inline rename controls."""
     name = escape(division.name)
     return f"""<h1 style="margin: 0; color: #0f172a;">{name}</h1>
-<button hx-get="/ui/divisions/{division.id}/name_form" hx-target="#division-name-header" hx-swap="innerHTML" style="background: #64748b; padding: 5px 12px; width: auto; font-size: 0.85rem; margin-left: 10px;">Rename</button>"""
+<button hx-get="/ui/divisions/{division.id}/name_form" hx-target="#division-name-header" hx-swap="innerHTML" style="background: #64748b; padding: 5px 12px; width: auto; font-size: 0.85rem; margin-left: 12px;">Rename</button>"""
 
 
 @app.route("/divisions/<int:div_id>/generate_bracket", methods=["POST"])
