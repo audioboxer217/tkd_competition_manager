@@ -125,6 +125,10 @@ class TestDivisionAPI:
 
 
 class TestBracketAPI:
+    def test_generate_bracket_nonexistent_division(self, client):
+        resp = _generate_bracket(client, 9999)
+        assert resp.status_code == 404
+
     def test_generate_bracket_too_few_competitors(self, client):
         div_id = _create_division(client).get_json()["id"]
         _add_competitors(client, div_id, ["Alice"])
