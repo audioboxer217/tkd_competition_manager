@@ -617,8 +617,8 @@ class TestBracketRegeneration:
         resp = _generate_bracket(client, div_id)
         assert resp.status_code == 200
 
-        all_competitor_ids = {m.competitor1_id for m in Match.query.filter_by(division_id=div_id).all()} | \
-                             {m.competitor2_id for m in Match.query.filter_by(division_id=div_id).all()}
+        all_matches = Match.query.filter_by(division_id=div_id).all()
+        all_competitor_ids = {m.competitor1_id for m in all_matches} | {m.competitor2_id for m in all_matches}
         carol = Competitor.query.filter_by(division_id=div_id, name="Carol").first()
         assert carol.id in all_competitor_ids
 
