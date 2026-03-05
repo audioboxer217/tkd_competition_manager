@@ -634,6 +634,9 @@ def ui_delete_competitor(div_id, comp_id):
     comp = Competitor.query.get_or_404(comp_id)
     if comp.division_id != div_id:
         return "Not found", 404
+    # Clear any existing bracket matches so FK constraints are not violated and
+    # the user is required to regenerate the bracket after the roster change.
+    Match.query.filter_by(division_id=div_id).delete()
     db.session.delete(comp)
     db.session.commit()
     return _competitors_list_html(div_id)

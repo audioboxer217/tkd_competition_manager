@@ -440,6 +440,19 @@ class TestUICompetitors:
         assert b"Bob" in resp.data
         assert db.session.get(Competitor, comp.id) is None
 
+    def test_ui_delete_competitor_clears_bracket(self, client):
+        """Deleting a competitor must also clear all bracket matches for the division."""
+        div_id = _create_division(client).get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob", "Carol"])
+        _generate_bracket(client, div_id)
+        assert Match.query.filter_by(division_id=div_id).count() > 0
+
+        comp = Competitor.query.filter_by(division_id=div_id, name="Carol").first()
+        resp = client.delete(f"/ui/divisions/{div_id}/competitors/{comp.id}")
+        assert resp.status_code == 200
+        # All matches for this division must be gone; bracket must be regenerated
+        assert Match.query.filter_by(division_id=div_id).count() == 0
+
     def test_ui_delete_competitor_not_found(self, client):
         div_id = _create_division(client).get_json()["id"]
         resp = client.delete(f"/ui/divisions/{div_id}/competitors/9999")
