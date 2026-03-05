@@ -205,6 +205,7 @@ def _division_name_display_html(division):
 @app.route("/divisions/<int:div_id>/generate_bracket", methods=["POST"])
 @login_required
 def generate_bracket(div_id):
+    Division.query.get_or_404(div_id)
     # Delete any existing matches before (re-)generating the bracket
     Match.query.filter_by(division_id=div_id).delete()
     db.session.flush()
