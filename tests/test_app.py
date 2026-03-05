@@ -429,6 +429,199 @@ class TestUICompetitors:
         assert b"Charlie" in resp.data
         assert b"Dana" in resp.data
 
+    def test_ui_delete_competitor(self, client):
+        div_id = _create_division(client).get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        comp = Competitor.query.filter_by(division_id=div_id, name="Alice").first()
+
+        resp = client.delete(f"/ui/divisions/{div_id}/competitors/{comp.id}")
+        assert resp.status_code == 200
+        assert b"Alice" not in resp.data
+        assert b"Bob" in resp.data
+        assert db.session.get(Competitor, comp.id) is None
+
+    def test_ui_delete_competitor_not_found(self, client):
+        div_id = _create_division(client).get_json()["id"]
+        resp = client.delete(f"/ui/divisions/{div_id}/competitors/9999")
+        assert resp.status_code == 404
+
+    def test_ui_delete_competitor_wrong_division(self, client):
+        div1_id = _create_division(client, "Div 1").get_json()["id"]
+        div2_id = _create_division(client, "Div 2").get_json()["id"]
+        _add_competitors(client, div1_id, ["Alice"])
+        comp = Competitor.query.filter_by(division_id=div1_id).first()
+
+        resp = client.delete(f"/ui/divisions/{div2_id}/competitors/{comp.id}")
+        assert resp.status_code == 404
+
+    def test_ui_move_competitor_down(self, client):
+        div_id = _create_division(client).get_json()["id"]
+        _add_competitors(client, div_id, ["First", "Second", "Third"])
+        comp = Competitor.query.filter_by(division_id=div_id, name="First").first()
+
+        resp = client.post(
+            f"/ui/divisions/{div_id}/competitors/{comp.id}/move",
+            data={"direction": "down"},
+        )
+        assert resp.status_code == 200
+
+        # First should now appear after Second
+        body = resp.data.decode()
+        assert body.index("First") > body.index("Second")
+
+    def test_ui_move_competitor_up(self, client):
+        div_id = _create_division(client).get_json()["id"]
+        _add_competitors(client, div_id, ["First", "Second", "Third"])
+        comp = Competitor.query.filter_by(division_id=div_id, name="Third").first()
+
+        resp = client.post(
+            f"/ui/divisions/{div_id}/competitors/{comp.id}/move",
+            data={"direction": "up"},
+        )
+        assert resp.status_code == 200
+
+        # Third should now appear before Second
+        body = resp.data.decode()
+        assert body.index("Third") < body.index("Second")
+
+    def test_ui_move_competitor_at_top_noop(self, client):
+        div_id = _create_division(client).get_json()["id"]
+        _add_competitors(client, div_id, ["First", "Second"])
+        comp = Competitor.query.filter_by(division_id=div_id, name="First").first()
+        original_position = comp.position
+
+        client.post(
+            f"/ui/divisions/{div_id}/competitors/{comp.id}/move",
+            data={"direction": "up"},
+        )
+
+        db.session.refresh(comp)
+        assert comp.position == original_position
+
+    def test_ui_move_competitor_at_bottom_noop(self, client):
+        div_id = _create_division(client).get_json()["id"]
+        _add_competitors(client, div_id, ["First", "Second"])
+        comp = Competitor.query.filter_by(division_id=div_id, name="Second").first()
+        original_position = comp.position
+
+        client.post(
+            f"/ui/divisions/{div_id}/competitors/{comp.id}/move",
+            data={"direction": "down"},
+        )
+
+        db.session.refresh(comp)
+        assert comp.position == original_position
+
+    def test_ui_move_competitor_not_found(self, client):
+        div_id = _create_division(client).get_json()["id"]
+        resp = client.post(
+            f"/ui/divisions/{div_id}/competitors/9999/move",
+            data={"direction": "up"},
+        )
+        assert resp.status_code == 404
+
+    def test_ui_competitors_ordered_by_position(self, client):
+        div_id = _create_division(client).get_json()["id"]
+        _add_competitors(client, div_id, ["Alpha", "Beta", "Gamma"])
+
+        resp = client.get(f"/ui/divisions/{div_id}/competitors_list")
+        body = resp.data.decode()
+        assert body.index("Alpha") < body.index("Beta") < body.index("Gamma")
+
+    def test_ui_add_competitors_appends_with_position(self, client):
+        """Adding competitors in two batches keeps them in insertion order."""
+        div_id = _create_division(client).get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _add_competitors(client, div_id, ["Carol"])
+
+        resp = client.get(f"/ui/divisions/{div_id}/competitors_list")
+        body = resp.data.decode()
+        assert body.index("Alice") < body.index("Bob") < body.index("Carol")
+
+
+# ---------------------------------------------------------------------------
+# HTMX UI – Division rename routes
+# ---------------------------------------------------------------------------
+
+
+class TestUIDivisionRename:
+    def test_ui_rename_division(self, client):
+        div_id = _create_division(client, "Old Name").get_json()["id"]
+        resp = client.patch(
+            f"/ui/divisions/{div_id}/name",
+            data={"name": "New Name"},
+        )
+        assert resp.status_code == 200
+        assert b"New Name" in resp.data
+
+        division = db.session.get(Division, div_id)
+        assert division.name == "New Name"
+
+    def test_ui_rename_division_empty_name_ignored(self, client):
+        """Submitting an empty name leaves the division name unchanged."""
+        div_id = _create_division(client, "Keep Me").get_json()["id"]
+        client.patch(f"/ui/divisions/{div_id}/name", data={"name": "  "})
+
+        division = db.session.get(Division, div_id)
+        assert division.name == "Keep Me"
+
+    def test_ui_rename_division_not_found(self, client):
+        resp = client.patch("/ui/divisions/9999/name", data={"name": "X"})
+        assert resp.status_code == 404
+
+    def test_ui_division_name_form(self, client):
+        div_id = _create_division(client, "My Division").get_json()["id"]
+        resp = client.get(f"/ui/divisions/{div_id}/name_form")
+        assert resp.status_code == 200
+        assert b"My Division" in resp.data
+        assert b"form" in resp.data
+
+    def test_ui_division_name_display(self, client):
+        div_id = _create_division(client, "Display Test").get_json()["id"]
+        resp = client.get(f"/ui/divisions/{div_id}/name_display")
+        assert resp.status_code == 200
+        assert b"Display Test" in resp.data
+
+
+# ---------------------------------------------------------------------------
+# Bracket regeneration
+# ---------------------------------------------------------------------------
+
+
+class TestBracketRegeneration:
+    def test_regenerate_bracket_replaces_existing_matches(self, client):
+        """Calling generate_bracket a second time deletes old matches and creates new ones."""
+        div_id = _create_division(client).get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _generate_bracket(client, div_id)
+
+        # Add a third competitor so the bracket structure changes
+        _add_competitors(client, div_id, ["Carol"])
+        match_count_before = Match.query.filter_by(division_id=div_id).count()
+
+        resp = _generate_bracket(client, div_id)
+        assert resp.status_code == 200
+        assert b"Success" in resp.data
+
+        # 3-competitor bracket has more matches than 2-competitor bracket
+        match_count_after = Match.query.filter_by(division_id=div_id).count()
+        assert match_count_after != match_count_before
+
+    def test_regenerate_bracket_with_added_competitor(self, client):
+        """After adding a competitor and regenerating, the new competitor appears in matches."""
+        div_id = _create_division(client).get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _generate_bracket(client, div_id)
+
+        _add_competitors(client, div_id, ["Carol"])
+        resp = _generate_bracket(client, div_id)
+        assert resp.status_code == 200
+
+        all_competitor_ids = {m.competitor1_id for m in Match.query.filter_by(division_id=div_id).all()} | \
+                             {m.competitor2_id for m in Match.query.filter_by(division_id=div_id).all()}
+        carol = Competitor.query.filter_by(division_id=div_id, name="Carol").first()
+        assert carol.id in all_competitor_ids
+
 
 # ---------------------------------------------------------------------------
 # HTMX UI – Match result recording
