@@ -73,6 +73,7 @@ class Competitor(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     division_id = db.Column(db.Integer, db.ForeignKey("division.id"), nullable=False)
+    position = db.Column(db.Integer, nullable=False, default=0)
 
 
 class Match(db.Model):
@@ -173,14 +174,47 @@ def record_result(match_id):
         return jsonify({"message": "Result recorded and bracket updated."})
 
 
+def _competitors_list_html(div_id):
+    """Return HTML fragment for the competitor list with management controls."""
+    competitors = Competitor.query.filter_by(division_id=div_id).order_by(Competitor.position).all()
+    if not competitors:
+        return "<li style='color: #94a3b8;'>No competitors added yet.</li>"
+    total = len(competitors)
+    items = []
+    for i, c in enumerate(competitors):
+        up_disabled = " disabled" if i == 0 else ""
+        down_disabled = " disabled" if i == total - 1 else ""
+        name = escape(c.name)
+        items.append(f"""<li style="display: flex; justify-content: space-between; align-items: center; padding: 8px 10px;">
+            <span>{name}</span>
+            <div style="display: flex; gap: 4px;">
+                <button{up_disabled} hx-post="/ui/divisions/{div_id}/competitors/{c.id}/move" hx-vals='{{"direction":"up"}}' hx-target="#competitor-list" hx-swap="innerHTML" style="padding: 2px 8px; font-size: 0.8rem; width: auto; background: #64748b;">&#8593;</button>
+                <button{down_disabled} hx-post="/ui/divisions/{div_id}/competitors/{c.id}/move" hx-vals='{{"direction":"down"}}' hx-target="#competitor-list" hx-swap="innerHTML" style="padding: 2px 8px; font-size: 0.8rem; width: auto; background: #64748b;">&#8595;</button>
+                <button class="danger-btn" hx-delete="/ui/divisions/{div_id}/competitors/{c.id}" hx-target="#competitor-list" hx-swap="innerHTML" hx-confirm="Remove {name} from this division?" style="padding: 2px 8px; font-size: 0.8rem; width: auto;">&times;</button>
+            </div>
+        </li>""")
+    return "\n".join(items)
+
+
+def _division_name_display_html(division):
+    """Return HTML fragment for the division name with inline rename controls."""
+    name = escape(division.name)
+    return f"""<h1 style="margin: 0; color: #0f172a;">{name}</h1>
+<button hx-get="/ui/divisions/{division.id}/name_form" hx-target="#division-name-header" hx-swap="innerHTML" style="background: #64748b; padding: 5px 12px; width: auto; font-size: 0.85rem; margin-left: 10px;">Rename</button>"""
+
+
 @app.route("/divisions/<int:div_id>/generate_bracket", methods=["POST"])
 @login_required
 def generate_bracket(div_id):
-    # division = Division.query.get_or_404(div_id)
+    # Delete any existing matches before (re-)generating the bracket
+    Match.query.filter_by(division_id=div_id).delete()
+    db.session.flush()
+
     competitors = Competitor.query.filter_by(division_id=div_id).all()
 
     num_comp = len(competitors)
     if num_comp < 2:
+        db.session.rollback()
         return jsonify({"error": "Need at least 2 competitors to generate a bracket."}), 400
 
     # 1. Calculate bracket size (next power of 2) using log2
@@ -265,15 +299,21 @@ def generate_bracket(div_id):
 
     # Commit everything to the database
     db.session.commit()
-    # Return a success message with a link to manage the bracket
+    # Return a success message with links to manage or regenerate the bracket
     return f"""
     <div style="padding: 15px; background: #d1fae5; color: #065f46; border-radius: 4px;">
         <strong>Success!</strong> Bracket generated for {num_comp} competitors.
         <br><br>
         <a href="/admin/divisions/{div_id}/bracket_manage" style="display: inline-block; background: #059669; color: white; padding: 8px 16px; text-decoration: none; border-radius: 4px; margin-top: 10px;">
-            Manage & Schedule Bracket
+            Manage &amp; Schedule Bracket
         </a>
     </div>
+    <button class="generate-btn" style="background: #f59e0b; margin-top: 10px;"
+            hx-post="/divisions/{div_id}/generate_bracket"
+            hx-target="#bracket-controls" hx-swap="innerHTML"
+            hx-confirm="Regenerate bracket? This will delete all existing match data and cannot be undone.">
+        Regenerate Bracket
+    </button>
     """
 
 
@@ -573,24 +613,85 @@ def ui_add_competitors(div_id):
         # Split the text area by newlines and remove empty lines
         name_list = [name.strip() for name in names_text.split("\n") if name.strip()]
 
-        for name in name_list:
-            comp = Competitor(name=name, division_id=div_id)
+        # Assign positions starting after the current maximum
+        max_pos = db.session.query(db.func.max(Competitor.position)).filter_by(division_id=div_id).scalar() or 0
+        for i, name in enumerate(name_list):
+            comp = Competitor(name=name, division_id=div_id, position=max_pos + i + 1)
             db.session.add(comp)
 
         db.session.commit()
 
-    # Return the updated list of competitors
-    competitors = Competitor.query.filter_by(division_id=div_id).all()
-    return "".join([f"<li>{c.name}</li>" for c in competitors])
+    return _competitors_list_html(div_id)
 
 
 @app.route("/ui/divisions/<int:div_id>/competitors_list")
 @login_required
 def ui_competitors_list(div_id):
-    competitors = Competitor.query.filter_by(division_id=div_id).all()
-    if not competitors:
-        return "<li style='color: #94a3b8;'>No competitors added yet.</li>"
-    return "".join([f"<li>{c.name}</li>" for c in competitors])
+    return _competitors_list_html(div_id)
+
+
+@app.route("/ui/divisions/<int:div_id>/competitors/<int:comp_id>", methods=["DELETE"])
+@login_required
+def ui_delete_competitor(div_id, comp_id):
+    comp = Competitor.query.get_or_404(comp_id)
+    if comp.division_id != div_id:
+        return "Not found", 404
+    db.session.delete(comp)
+    db.session.commit()
+    return _competitors_list_html(div_id)
+
+
+@app.route("/ui/divisions/<int:div_id>/competitors/<int:comp_id>/move", methods=["POST"])
+@login_required
+def ui_move_competitor(div_id, comp_id):
+    direction = request.form.get("direction")
+    competitors = Competitor.query.filter_by(division_id=div_id).order_by(Competitor.position).all()
+    idx = next((i for i, c in enumerate(competitors) if c.id == comp_id), None)
+    if idx is None:
+        return "Competitor not found", 404
+    if direction == "up" and idx > 0:
+        competitors[idx].position, competitors[idx - 1].position = (
+            competitors[idx - 1].position,
+            competitors[idx].position,
+        )
+        db.session.commit()
+    elif direction == "down" and idx < len(competitors) - 1:
+        competitors[idx].position, competitors[idx + 1].position = (
+            competitors[idx + 1].position,
+            competitors[idx].position,
+        )
+        db.session.commit()
+    return _competitors_list_html(div_id)
+
+
+@app.route("/ui/divisions/<int:div_id>/name_form")
+@login_required
+def ui_division_name_form(div_id):
+    division = Division.query.get_or_404(div_id)
+    name = escape(division.name)
+    return f"""<form hx-patch="/ui/divisions/{div_id}/name" hx-target="#division-name-header" hx-swap="innerHTML" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+    <input type="text" name="name" value="{name}" required style="padding: 5px 8px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 1.2rem; flex: 1; min-width: 200px;">
+    <button type="submit" style="background: #10b981; padding: 5px 12px; width: auto; font-size: 0.9rem;">Save</button>
+    <button type="button" hx-get="/ui/divisions/{div_id}/name_display" hx-target="#division-name-header" hx-swap="innerHTML" style="background: #64748b; padding: 5px 12px; width: auto; font-size: 0.9rem;">Cancel</button>
+</form>"""
+
+
+@app.route("/ui/divisions/<int:div_id>/name_display")
+@login_required
+def ui_division_name_display(div_id):
+    division = Division.query.get_or_404(div_id)
+    return _division_name_display_html(division)
+
+
+@app.route("/ui/divisions/<int:div_id>/name", methods=["PATCH"])
+@login_required
+def ui_rename_division(div_id):
+    division = Division.query.get_or_404(div_id)
+    new_name = request.form.get("name", "").strip()
+    if new_name:
+        division.name = new_name
+        db.session.commit()
+    return _division_name_display_html(division)
 
 
 @app.route("/admin/divisions/<int:div_id>/bracket_manage")

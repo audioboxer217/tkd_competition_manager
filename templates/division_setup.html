@@ -61,6 +61,11 @@
             background: #1d4ed8;
         }
 
+        button:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
         button.generate-btn {
             background: #10b981;
             margin-top: 20px;
@@ -69,6 +74,17 @@
 
         button.generate-btn:hover {
             background: #059669;
+        }
+
+        button.danger-btn {
+            background: #ef4444;
+            font-size: 0.85rem;
+            padding: 6px 12px;
+            width: auto;
+        }
+
+        button.danger-btn:hover {
+            background: #dc2626;
         }
 
         ul {
@@ -101,12 +117,19 @@
 
     <div class="container">
         <div class="header">
-            <h1 style="margin: 0; color: #0f172a;">{{ division.name }}</h1>
+            <div id="division-name-header" style="display: flex; align-items: center;">
+                <h1 style="margin: 0; color: #0f172a;">{{ division.name }}</h1>
+                <button hx-get="/ui/divisions/{{ division.id }}/name_form"
+                        hx-target="#division-name-header" hx-swap="innerHTML"
+                        style="background: #64748b; padding: 5px 12px; width: auto; font-size: 0.85rem; margin-left: 12px;">
+                    Rename
+                </button>
+            </div>
             <a href="/admin" class="back-link">&larr; Back to Admin</a>
         </div>
 
         <div class="grid">
-            <div {{ "hidden" if division.competitors else "" }}>
+            <div>
                 <h3 style="margin-top: 0;">Add Competitors</h3>
                 <p style="font-size: 0.9rem; color: #64748b;">Paste a list of names (one per line):</p>
 
@@ -121,25 +144,34 @@
                 <h3 style="margin-top: 0;">Division Roster</h3>
                 <ul id="competitor-list" hx-get="/ui/divisions/{{ division.id }}/competitors_list" hx-trigger="load">
                 </ul>
-                {% if division.competitors %}
-                <div style="padding: 15px; background: #d1fae5; color: #64748b; border-radius: 4px;">
-                    <a href="/admin/divisions/{{ division.id }}/bracket_manage"
-                        style="display: inline-block; background: #059669; color: white; padding: 8px 16px; text-decoration: none; border-radius: 4px; margin-top: 10px;">
-                        Manage & Schedule Bracket
-                    </a>
-                </div>
-                {% else %}
+
                 <div id="bracket-controls" style="margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 20px;">
+                    {% if division.matches %}
+                    <div style="padding: 15px; background: #d1fae5; border-radius: 4px; margin-bottom: 10px;">
+                        <a href="/admin/divisions/{{ division.id }}/bracket_manage"
+                            style="display: inline-block; background: #059669; color: white; padding: 8px 16px; text-decoration: none; border-radius: 4px;">
+                            Manage &amp; Schedule Bracket
+                        </a>
+                    </div>
+                    <button class="generate-btn" style="background: #f59e0b;"
+                            hx-post="/divisions/{{ division.id }}/generate_bracket"
+                            hx-target="#bracket-controls" hx-swap="innerHTML"
+                            hx-confirm="Regenerate bracket? This will delete all existing match data and cannot be undone.">
+                        Regenerate Bracket
+                    </button>
+                    {% elif division.competitors %}
                     <p style="font-size: 0.9rem; color: #64748b;">Once all competitors are added, lock the division and
                         build the bracket.</p>
-
-                    <button class="generate-btn" hx-post="/divisions/{{ division.id }}/generate_bracket"
-                        hx-target="#bracket-controls" hx-swap="innerHTML"
-                        hx-confirm="Are you sure? You cannot add more competitors once the bracket is generated.">
+                    <button class="generate-btn"
+                            hx-post="/divisions/{{ division.id }}/generate_bracket"
+                            hx-target="#bracket-controls" hx-swap="innerHTML"
+                            hx-confirm="Are you sure? Generating the bracket will lock in the current competitor order.">
                         Generate Bracket
                     </button>
+                    {% else %}
+                    <p style="font-size: 0.9rem; color: #64748b;">Add competitors above, then generate the bracket.</p>
+                    {% endif %}
                 </div>
-                {% endif %}
             </div>
         </div>
     </div>
