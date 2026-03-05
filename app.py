@@ -73,7 +73,7 @@ class Competitor(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     division_id = db.Column(db.Integer, db.ForeignKey("division.id"), nullable=False)
-    position = db.Column(db.Integer, nullable=False, default=0)
+    position = db.Column(db.Integer, nullable=True, default=None)
 
 
 class Match(db.Model):
