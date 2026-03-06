@@ -839,3 +839,63 @@ class TestPageRoutes:
     def test_ring_scorekeeper_not_found(self, client):
         resp = client.get("/ring/9999/scorekeeper")
         assert resp.status_code == 404
+
+    def test_ring_scorekeeper_shows_tbd_matches(self, client):
+        """Matches with a TBD competitor should still appear on the scorekeeper page."""
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_id = _create_division(client).get_json()["id"]
+        # 3 competitors causes a bye, so one semi-final match will have a TBD slot
+        _add_competitors(client, div_id, ["Alice", "Bob", "Carol"])
+        _generate_bracket(client, div_id)
+
+        # Schedule all matches to the ring
+        for match in Match.query.filter_by(division_id=div_id).all():
+            client.put(
+                f"/matches/{match.id}/schedule",
+                data={"ring_id": str(ring_id), "ring_sequence": str(match.id)},
+            )
+
+        resp = client.get(f"/ring/{ring_id}/scorekeeper")
+        assert resp.status_code == 200
+        assert b"TBD" in resp.data
+
+    def test_ring_scorekeeper_tbd_submit_disabled(self, client):
+        """The Submit Result button should be disabled when a competitor is TBD."""
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_id = _create_division(client).get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob", "Carol"])
+        _generate_bracket(client, div_id)
+
+        # Find the match that has a TBD slot (no competitor1_id or competitor2_id)
+        tbd_match = Match.query.filter_by(division_id=div_id).filter(
+            Match.competitor1_id.is_(None) | Match.competitor2_id.is_(None)
+        ).first()
+        assert tbd_match is not None
+
+        client.put(
+            f"/matches/{tbd_match.id}/schedule",
+            data={"ring_id": str(ring_id), "ring_sequence": str(tbd_match.id)},
+        )
+
+        resp = client.get(f"/ring/{ring_id}/scorekeeper")
+        assert resp.status_code == 200
+        assert b"disabled" in resp.data
+
+    def test_ring_scorekeeper_no_tbd_submit_enabled(self, client):
+        """The Submit Result button should NOT be disabled when both competitors are known."""
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_id = _create_division(client).get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _generate_bracket(client, div_id)
+
+        match = Match.query.filter_by(division_id=div_id).first()
+        client.put(
+            f"/matches/{match.id}/schedule",
+            data={"ring_id": str(ring_id), "ring_sequence": "1"},
+        )
+
+        resp = client.get(f"/ring/{ring_id}/scorekeeper")
+        assert resp.status_code == 200
+        # The submit button should not have the disabled attribute
+        assert b'class="submit-btn"' in resp.data
+        assert b'class="submit-btn" disabled' not in resp.data
