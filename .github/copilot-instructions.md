@@ -67,3 +67,4 @@ This is a lightweight, web-based **Taekwondo Competition Manager** built with Py
 - Use `Model.query.get_or_404(id)` for fetching records by primary key
 - Match status values: `"Pending"`, `"In Progress"`, `"Completed"`, `"Disqualification"`, `"Completed (Bye)"`
 - Round name values: `"Round 1"`, `"Round {n}"`, `"Quarter-Final"`, `"Semi-Final"`, `"Final"`
+- Always write tests for any new page or functionality update
