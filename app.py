@@ -807,13 +807,10 @@ def ring_scorekeeper(ring_id):
     ring = Ring.query.get_or_404(ring_id)
 
     # Get all pending or in-progress matches for this ring, ordered by match number
-    # We only want matches where both competitors are known (no TBDs)
     matches = (
         Match.query.filter(
             Match.ring_id == ring.id,
             Match.status.in_(["Pending", "In Progress"]),
-            Match.competitor1_id.isnot(None),
-            Match.competitor2_id.isnot(None),
         )
         .order_by(Match.match_number)
         .all()
