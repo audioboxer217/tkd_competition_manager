@@ -192,7 +192,7 @@
                 </div>
 
                 <div class="controls">
-                    <select name="status" required>
+                    <select name="status" required {{ "disabled" if has_tbd else "" }}>
                         <option value="In Progress" {{ "selected" if match.status=="Pending" else "" }}>Start</option>
                         <option value="Completed" {{ "selected" if match.status=="In Progress" else "disabled" }}>Normal Win (PTF/PTG/SUP)
                         </option>

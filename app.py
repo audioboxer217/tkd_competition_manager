@@ -824,6 +824,9 @@ def ring_scorekeeper(ring_id):
 def ui_record_result(match_id):
     match = Match.query.get_or_404(match_id)
 
+    if not match.competitor1_id or not match.competitor2_id:
+        return "<div style='color: red;'>Error: Cannot submit result for a match with TBD competitors.</div>", 400
+
     status = request.form.get("status")
     winner_id = request.form.get("winner_id")
 
