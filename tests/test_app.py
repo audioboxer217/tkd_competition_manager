@@ -849,10 +849,10 @@ class TestPageRoutes:
         _generate_bracket(client, div_id)
 
         # Schedule all matches to the ring
-        for match in Match.query.filter_by(division_id=div_id).all():
+        for seq, match in enumerate(Match.query.filter_by(division_id=div_id).all(), start=1):
             client.put(
                 f"/matches/{match.id}/schedule",
-                data={"ring_id": str(ring_id), "ring_sequence": str(match.id)},
+                data={"ring_id": str(ring_id), "ring_sequence": str(seq)},
             )
 
         resp = client.get(f"/ring/{ring_id}/scorekeeper")
