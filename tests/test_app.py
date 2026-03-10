@@ -707,6 +707,23 @@ class TestUIMatchResult:
         )
         assert resp.status_code == 404
 
+    def test_ui_record_result_tbd_competitor_rejected(self, client):
+        div_id = _create_division(client).get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob", "Carol"])
+        _generate_bracket(client, div_id)
+
+        # Find a Pending match with a TBD slot (excludes Completed (Bye) matches)
+        tbd_match = Match.query.filter_by(division_id=div_id, status="Pending").filter(
+            Match.competitor1_id.is_(None) | Match.competitor2_id.is_(None)
+        ).first()
+        assert tbd_match is not None
+
+        resp = client.post(
+            f"/ui/matches/{tbd_match.id}/result",
+            data={"status": "In Progress"},
+        )
+        assert resp.status_code == 400
+
 
 # ---------------------------------------------------------------------------
 # Match scheduling (HTMX)
@@ -866,8 +883,8 @@ class TestPageRoutes:
         _add_competitors(client, div_id, ["Alice", "Bob", "Carol"])
         _generate_bracket(client, div_id)
 
-        # Find the match that has a TBD slot (no competitor1_id or competitor2_id)
-        tbd_match = Match.query.filter_by(division_id=div_id).filter(
+        # Find a Pending match with a TBD slot (excludes Completed (Bye) matches)
+        tbd_match = Match.query.filter_by(division_id=div_id, status="Pending").filter(
             Match.competitor1_id.is_(None) | Match.competitor2_id.is_(None)
         ).first()
         assert tbd_match is not None
