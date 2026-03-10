@@ -879,7 +879,8 @@ class TestPageRoutes:
 
         resp = client.get(f"/ring/{ring_id}/scorekeeper")
         assert resp.status_code == 200
-        assert b"disabled" in resp.data
+        # The Submit Result button should be rendered with the disabled attribute
+        assert b'class="submit-btn" disabled' in resp.data
 
     def test_ring_scorekeeper_no_tbd_submit_enabled(self, client):
         """The Submit Result button should NOT be disabled when both competitors are known."""
