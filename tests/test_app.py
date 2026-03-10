@@ -874,7 +874,7 @@ class TestPageRoutes:
 
         client.put(
             f"/matches/{tbd_match.id}/schedule",
-            data={"ring_id": str(ring_id), "ring_sequence": str(tbd_match.id)},
+            data={"ring_id": str(ring_id), "ring_sequence": "1"},
         )
 
         resp = client.get(f"/ring/{ring_id}/scorekeeper")
