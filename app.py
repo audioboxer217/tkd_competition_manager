@@ -211,64 +211,7 @@ def _division_name_display_html(division):
 
 def _scorekeeper_match_card_html(match):
     """Return HTML fragment for a single scorekeeper match card."""
-    has_tbd = not match.competitor1_id or not match.competitor2_id
-
-    if match.status == "In Progress":
-        action_buttons = f"""
-        <button type="submit" name="status" value="Completed" class="submit-btn winner-required" disabled {'data-force-disabled="1"' if has_tbd else ""}>
-            Normal Win
-        </button>
-        <button type="submit" name="status" value="Disqualification" class="submit-btn dsq-btn winner-required" disabled {'data-force-disabled="1"' if has_tbd else ""}>
-            Disqualification
-        </button>
-        """
-    else:
-        action_buttons = f"""
-        <button type="submit" name="status" value="In Progress" class="submit-btn" {"disabled" if has_tbd else ""}>
-            Start
-        </button>
-        <button type="submit" name="status" value="Disqualification" class="submit-btn dsq-btn winner-required" disabled {'data-force-disabled="1"' if has_tbd else ""}>
-            Disqualification
-        </button>
-        """
-
-    match_number = match.match_number if match.match_number is not None else "Unassigned"
-    competitor1_name = escape(match.competitor1.name) if match.competitor1 else "TBD"
-    competitor2_name = escape(match.competitor2.name) if match.competitor2 else "TBD"
-    division_name = escape(match.division.name) if match.division else ""
-
-    return f"""
-    <div class="match-card" id="match-{match.id}">
-        <div class="match-info">
-            <strong>Match {match_number}</strong> &mdash; {division_name} ({match.round_name})
-        </div>
-
-        <form class="scorekeeper-form" data-has-tbd="{1 if has_tbd else 0}" hx-post="/ui/matches/{match.id}/result" hx-target="#match-{match.id}" hx-swap="outerHTML">
-
-            <div class="competitor-select">
-                <div class="competitor-option">
-                    <input type="radio" id="win-{match.id}-1" name="winner_id" value="{match.competitor1_id if match.competitor1_id else ""}" {"disabled" if has_tbd else ""}>
-                    <label for="win-{match.id}-1" class="competitor-label blue-side">
-                        Chung (Blue)<br>
-                        <span style="color: #0f172a; font-size: 1.5rem;">{competitor1_name}</span>
-                    </label>
-                </div>
-
-                <div class="competitor-option">
-                    <input type="radio" id="win-{match.id}-2" name="winner_id" value="{match.competitor2_id if match.competitor2_id else ""}" {"disabled" if has_tbd else ""}>
-                    <label for="win-{match.id}-2" class="competitor-label red-side">
-                        Hong (Red)<br>
-                        <span style="color: #0f172a; font-size: 1.5rem;">{competitor2_name}</span>
-                    </label>
-                </div>
-            </div>
-
-            <div class="controls">
-                {action_buttons}
-            </div>
-        </form>
-    </div>
-    """
+    return render_template("scorekeeper_match_card.html", match=match)
 
 
 @app.route("/divisions/<int:div_id>/generate_bracket", methods=["POST"])
