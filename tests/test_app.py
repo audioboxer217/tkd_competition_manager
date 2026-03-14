@@ -705,7 +705,9 @@ class TestUIMatchResult:
             data={"status": "In Progress"},
         )
         assert resp.status_code == 200
-        assert b"Started" in resp.data
+        assert b"Normal Win" in resp.data
+        db.session.refresh(match)
+        assert match.status == "In Progress"
 
     def test_ui_record_result_completed(self, client):
         div_id = _create_division(client).get_json()["id"]
@@ -1034,7 +1036,7 @@ class TestEventTypes:
         assert b"TBD" in resp.data
 
     def test_ring_scorekeeper_tbd_submit_disabled(self, client):
-        """The Submit Result button should be disabled when a competitor is TBD."""
+        """Action buttons should be disabled when a competitor is TBD."""
         ring_id = _create_ring(client, "Ring 1").get_json()["id"]
         div_id = _create_division(client).get_json()["id"]
         _add_competitors(client, div_id, ["Alice", "Bob", "Carol"])
@@ -1053,11 +1055,11 @@ class TestEventTypes:
 
         resp = client.get(f"/ring/{ring_id}/scorekeeper")
         assert resp.status_code == 200
-        # The Submit Result button should be rendered with the disabled attribute
+        # Winner-required action button should be disabled for TBD match
         assert b'class="submit-btn" disabled' in resp.data
 
     def test_ring_scorekeeper_no_tbd_submit_enabled(self, client):
-        """The Submit Result button should NOT be disabled when both competitors are known."""
+        """Start should be enabled while winner-required actions begin disabled until a winner is selected."""
         ring_id = _create_ring(client, "Ring 1").get_json()["id"]
         div_id = _create_division(client).get_json()["id"]
         _add_competitors(client, div_id, ["Alice", "Bob"])
@@ -1071,9 +1073,9 @@ class TestEventTypes:
 
         resp = client.get(f"/ring/{ring_id}/scorekeeper")
         assert resp.status_code == 200
-        # The submit button should not have the disabled attribute
+        assert b"Start" in resp.data
         assert b'class="submit-btn"' in resp.data
-        assert b'class="submit-btn" disabled' not in resp.data
+        assert b'class="submit-btn dsq-btn winner-required" disabled' in resp.data
 
     def test_ring_scorekeeper_filters_by_event_type(self, client):
         ring_id = _create_ring(client, "Ring 1").get_json()["id"]
