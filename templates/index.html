@@ -136,7 +136,7 @@
         <button id="tab-poomsae" class="tab-btn" type="button" onclick="switchLiveEvent('poomsae')">Poomsae</button>
     </div>
     
-    <div id="ring-grid" class="ring-grid" hx-get="/ui/public_rings?event_type=kyorugi" hx-trigger="load, every 15s"
+    <div id="ring-grid" class="ring-grid" hx-get="/ui/public_rings?event_type=kyorugi" hx-trigger="load"
         hx-swap="innerHTML">
         <div style="text-align: center; width: 100%; color: #64748b;">Loading live rings...</div>
     </div>
@@ -144,6 +144,18 @@
     <script>
         const LIVE_EVENT_STORAGE_KEY = 'liveViewEventType';
         const VALID_EVENT_TYPES = ['kyorugi', 'poomsae'];
+
+        function getCurrentLiveEvent() {
+            const activeTab = document.querySelector('.tab-btn.active');
+            if (!activeTab) {
+                return 'kyorugi';
+            }
+            return activeTab.id.replace('tab-', '');
+        }
+
+        function refreshLiveView(eventType) {
+            htmx.ajax('GET', '/ui/public_rings?event_type=' + eventType, { target: '#ring-grid', swap: 'innerHTML' });
+        }
 
         function applyLiveEvent(eventType) {
             document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
@@ -159,7 +171,7 @@
             }
             localStorage.setItem(LIVE_EVENT_STORAGE_KEY, eventType);
             applyLiveEvent(eventType);
-            htmx.ajax('GET', '/ui/public_rings?event_type=' + eventType, { target: '#ring-grid', swap: 'innerHTML' });
+            refreshLiveView(eventType);
         }
 
         (function initializeLiveEventTab() {
@@ -167,6 +179,10 @@
             const initialEventType = VALID_EVENT_TYPES.includes(savedEventType) ? savedEventType : 'kyorugi';
             applyLiveEvent(initialEventType);
         })();
+
+        setInterval(function () {
+            refreshLiveView(getCurrentLiveEvent());
+        }, 15000);
     </script>
 
 </body>
