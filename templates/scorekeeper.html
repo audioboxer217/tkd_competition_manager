@@ -243,20 +243,17 @@
 
                 <div class="controls">
                     {% if match.status == "In Progress" %}
-                    <button type="submit" name="status" value="Completed" class="submit-btn winner-required" disabled
-                        {{ "data-force-disabled=\" 1\"" if has_tbd else "" }}>
+                    <button type="submit" name="status" value="Completed" class="submit-btn winner-required" disabled>
                         Normal Win
                     </button>
-                    <button type="submit" name="status" value="Disqualification" class="submit-btn dsq-btn winner-required" disabled
-                        {{ "data-force-disabled=\" 1\"" if has_tbd else "" }}>
+                    <button type="submit" name="status" value="Disqualification" class="submit-btn dsq-btn winner-required" disabled>
                         Disqualification
                     </button>
                     {% else %}
                     <button type="submit" name="status" value="In Progress" class="submit-btn" {{ "disabled" if has_tbd else "" }}>
                         Start
                     </button>
-                    <button type="submit" name="status" value="Disqualification" class="submit-btn dsq-btn winner-required" disabled
-                        {{ "data-force-disabled=\" 1\"" if has_tbd else "" }}>
+                    <button type="submit" name="status" value="Disqualification" class="submit-btn dsq-btn winner-required" disabled>
                         Disqualification
                     </button>
                     {% endif %}
