@@ -107,6 +107,30 @@
             justify-content: space-between;
             align-items: center;
         }
+
+        .tab-btn {
+            background: #e2e8f0;
+            color: #475569;
+            border: 1px solid #cbd5e1;
+            padding: 6px 18px;
+            border-radius: 4px 4px 0 0;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+
+        .tab-btn:hover {
+            background: #cbd5e1;
+        }
+
+        .active-tab {
+            background: #2563eb;
+            color: white;
+            border-color: #2563eb;
+        }
+
+        .active-tab:hover {
+            background: #1d4ed8;
+        }
     </style>
 </head>
 
@@ -135,16 +159,43 @@
 
         <div class="panel">
             <h2>Manage Divisions</h2>
-            <form class="form-group" hx-post="/ui/divisions" hx-target="#division-list" hx-swap="beforeend">
+<!-- Event tabs -->
+<div style="display: flex; gap: 4px; margin-bottom: 16px;">
+    <button id="tab-kyorugi" class="tab-btn active-tab" onclick="switchTab('kyorugi')" type="button">
+        Kyorugi
+    </button>
+    <button id="tab-poomsae" class="tab-btn" onclick="switchTab('poomsae')" type="button">
+        Poomsae
+    </button>
+</div>
+
+<form id="add-division-form" class="form-group" hx-post="/ui/divisions" hx-target="#division-list" hx-swap="beforeend">
+    <input type="hidden" id="event-type-input" name="event_type" value="kyorugi">
                 <input type="text" name="name" placeholder="e.g., Male - Senior - U70kg" required>
                 <button type="submit">Add Division</button>
             </form>
 
-            <ul id="division-list" hx-get="/ui/divisions_list" hx-trigger="load">
+            <ul id="division-list" hx-get="/ui/divisions_list?event_type=kyorugi" hx-trigger="load">
             </ul>
         </div>
 
     </div>
+
+    <script>
+        function switchTab(eventType) {
+            // Update tab button styles
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('active-tab');
+            });
+            document.getElementById('tab-' + eventType).classList.add('active-tab');
+
+            // Update the hidden event_type field so new divisions go to the right event
+            document.getElementById('event-type-input').value = eventType;
+
+            // Load the division list for the selected event via HTMX
+            htmx.ajax('GET', '/ui/divisions_list?event_type=' + eventType, { target: '#division-list', swap: 'innerHTML' });
+        }
+    </script>
 
 </body>
 

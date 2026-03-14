@@ -134,7 +134,8 @@
                 <p style="font-size: 0.9rem; color: #64748b;">Paste a list of names (one per line):</p>
 
                 <form hx-post="/ui/divisions/{{ division.id }}/competitors" hx-target="#competitor-list"
-                    hx-swap="innerHTML" hx-on::after-request="this.reset()">
+                    hx-swap="innerHTML"
+                    hx-on::after-request="this.reset(); htmx.ajax('GET', '/ui/divisions/{{ division.id }}/bracket_controls', {target: '#bracket-controls', swap: 'innerHTML'})">
                     <textarea name="names" placeholder="John Doe&#10;Jane Smith&#10;Bruce Lee" required></textarea>
                     <button type="submit" style="margin-top: 10px;">Add to Division</button>
                 </form>
@@ -164,8 +165,7 @@
                         build the bracket.</p>
                     <button class="generate-btn"
                             hx-post="/divisions/{{ division.id }}/generate_bracket"
-                            hx-target="#bracket-controls" hx-swap="innerHTML"
-                            hx-confirm="Are you sure? Generating the bracket will lock in the current competitor order.">
+                            hx-target="#bracket-controls" hx-swap="innerHTML">
                         Generate Bracket
                     </button>
                     {% else %}

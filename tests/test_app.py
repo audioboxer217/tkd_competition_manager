@@ -6,7 +6,6 @@ import pytest
 
 from app import Competitor, Division, Match, Ring, db
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -16,8 +15,8 @@ def _create_ring(client, name="Ring 1"):
     return client.post("/rings", json={"name": name})
 
 
-def _create_division(client, name="Male - Black Belt - Under 70kg"):
-    return client.post("/divisions", json={"name": name})
+def _create_division(client, name="Male - Black Belt - Under 70kg", event_type="kyorugi"):
+    return client.post("/divisions", json={"name": name, "event_type": event_type})
 
 
 def _add_competitors(client, div_id, names):
@@ -294,7 +293,7 @@ class TestUIRings:
     def test_ui_public_rings_sort_order(self, client):
         """In Progress matches appear before Pending, then sorted by match_number."""
         ring = Ring(name="Ring 1")
-        division = Division(name="Test Division")
+        division = Division(name="Test Division", event_type="kyorugi")
         db.session.add_all([ring, division])
         db.session.flush()
 
@@ -327,7 +326,7 @@ class TestUIRings:
     def test_ui_public_rings_null_match_number_excluded(self, client):
         """Matches without a match_number are excluded from the Live View."""
         ring = Ring(name="Ring 1")
-        division = Division(name="Test Division")
+        division = Division(name="Test Division", event_type="kyorugi")
         db.session.add_all([ring, division])
         db.session.flush()
 
@@ -348,6 +347,55 @@ class TestUIRings:
         assert b"Alice Smith" not in resp.data
         assert b"Bob Jones" not in resp.data
 
+    def test_ui_public_rings_filters_by_event_type(self, client):
+        ring = Ring(name="Ring 1")
+        div_kyorugi = Division(name="Kyorugi Division", event_type="kyorugi")
+        div_poomsae = Division(name="Poomsae Division", event_type="poomsae")
+        db.session.add_all([ring, div_kyorugi, div_poomsae])
+        db.session.flush()
+
+        k1 = Competitor(name="Alice Smith", division_id=div_kyorugi.id)
+        k2 = Competitor(name="Bob Jones", division_id=div_kyorugi.id)
+        p1 = Competitor(name="Carol White", division_id=div_poomsae.id)
+        p2 = Competitor(name="Dave Brown", division_id=div_poomsae.id)
+        db.session.add_all([k1, k2, p1, p2])
+        db.session.flush()
+
+        k_match = Match(
+            ring_id=ring.id,
+            division_id=div_kyorugi.id,
+            competitor1_id=k1.id,
+            competitor2_id=k2.id,
+            status="Pending",
+            match_number=101,
+            round_name="Round 1",
+        )
+        p_match = Match(
+            ring_id=ring.id,
+            division_id=div_poomsae.id,
+            competitor1_id=p1.id,
+            competitor2_id=p2.id,
+            status="Pending",
+            match_number=201,
+            round_name="Round 1",
+        )
+        db.session.add_all([k_match, p_match])
+        db.session.commit()
+
+        resp_kyorugi = client.get("/ui/public_rings?event_type=kyorugi")
+        assert resp_kyorugi.status_code == 200
+        assert b"Kyorugi Division" in resp_kyorugi.data
+        assert b"Poomsae Division" not in resp_kyorugi.data
+
+        resp_poomsae = client.get("/ui/public_rings?event_type=poomsae")
+        assert resp_poomsae.status_code == 200
+        assert b"Poomsae Division" in resp_poomsae.data
+        assert b"Kyorugi Division" not in resp_poomsae.data
+
+    def test_ui_public_rings_invalid_event_type(self, client):
+        resp = client.get("/ui/public_rings?event_type=unknown")
+        assert resp.status_code == 400
+
 
 # ---------------------------------------------------------------------------
 # HTMX UI – Division routes
@@ -356,7 +404,7 @@ class TestUIRings:
 
 class TestUIDivisions:
     def test_ui_add_division(self, client):
-        resp = client.post("/ui/divisions", data={"name": "Junior Boys"})
+        resp = client.post("/ui/divisions", data={"name": "Junior Boys", "event_type": "kyorugi"})
         assert resp.status_code == 200
         assert b"Junior Boys" in resp.data
 
@@ -371,7 +419,7 @@ class TestUIDivisions:
         assert b"Senior Women" in resp.data
 
     def test_ui_delete_division(self, client):
-        div = Division(name="To Remove")
+        div = Division(name="To Remove", event_type="kyorugi")
         db.session.add(div)
         db.session.commit()
 
@@ -848,6 +896,115 @@ class TestPageRoutes:
         resp = client.get("/admin/divisions/9999/bracket_manage")
         assert resp.status_code == 404
 
+
+# ---------------------------------------------------------------------------
+# Event types
+# ---------------------------------------------------------------------------
+
+
+class TestEventTypes:
+    def test_create_division_with_event_type(self, client):
+        resp = client.post("/divisions", json={"name": "Poomsae Div", "event_type": "poomsae"})
+        assert resp.status_code == 201
+        from app import Division, db
+
+        div = db.session.get(Division, resp.get_json()["id"])
+        assert div.event_type == "poomsae"
+
+    def test_create_division_invalid_event_type(self, client):
+        resp = client.post("/divisions", json={"name": "Bad", "event_type": "unknown"})
+        assert resp.status_code == 400
+
+    def test_ui_add_division_invalid_event_type(self, client):
+        resp = client.post("/ui/divisions", data={"name": "Bad", "event_type": "unknown"})
+        assert resp.status_code == 400
+
+    def test_ui_divisions_list_filtered_by_event_type(self, client):
+        client.post("/ui/divisions", data={"name": "Kyorugi Div", "event_type": "kyorugi"})
+        client.post("/ui/divisions", data={"name": "Poomsae Div", "event_type": "poomsae"})
+
+        resp_k = client.get("/ui/divisions_list?event_type=kyorugi")
+        assert b"Kyorugi Div" in resp_k.data
+        assert b"Poomsae Div" not in resp_k.data
+
+        resp_p = client.get("/ui/divisions_list?event_type=poomsae")
+        assert b"Poomsae Div" in resp_p.data
+        assert b"Kyorugi Div" not in resp_p.data
+
+    def test_ui_divisions_list_no_filter_returns_all(self, client):
+        client.post("/ui/divisions", data={"name": "Kyorugi Div", "event_type": "kyorugi"})
+        client.post("/ui/divisions", data={"name": "Poomsae Div", "event_type": "poomsae"})
+
+        resp = client.get("/ui/divisions_list")
+        assert b"Kyorugi Div" in resp.data
+        assert b"Poomsae Div" in resp.data
+
+    def test_ui_divisions_list_invalid_event_type(self, client):
+        resp = client.get("/ui/divisions_list?event_type=unknown")
+        assert resp.status_code == 400
+
+    def test_same_match_number_allowed_across_events(self, client):
+        """Match number 101 in kyorugi should not conflict with 101 in poomsae."""
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_kyorugi = _create_division(client, "Kyorugi Div", "kyorugi").get_json()["id"]
+        div_poomsae = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+        _add_competitors(client, div_kyorugi, ["Alice", "Bob"])
+        _add_competitors(client, div_poomsae, ["Carol", "Dave"])
+        _generate_bracket(client, div_kyorugi)
+        _generate_bracket(client, div_poomsae)
+
+        match_k = Match.query.filter_by(division_id=div_kyorugi).first()
+        match_p = Match.query.filter_by(division_id=div_poomsae).first()
+
+        # Schedule match_number 101 in kyorugi (ring 1 * 100 + 1)
+        resp1 = client.put(
+            f"/matches/{match_k.id}/schedule",
+            data={"ring_id": str(ring_id), "ring_sequence": "1"},
+        )
+        assert resp1.status_code == 200
+        assert b"Error" not in resp1.data
+        db.session.refresh(match_k)
+        assert match_k.match_number == (ring_id * 100) + 1
+
+        # Schedule the same match_number 101 in poomsae — must succeed (different event)
+        resp2 = client.put(
+            f"/matches/{match_p.id}/schedule",
+            data={"ring_id": str(ring_id), "ring_sequence": "1"},
+        )
+        assert resp2.status_code == 200
+        assert b"Error" not in resp2.data
+        db.session.refresh(match_p)
+        assert match_p.match_number == (ring_id * 100) + 1
+
+    def test_duplicate_match_number_rejected_within_event(self, client):
+        """Two matches in the same event cannot share a match number."""
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div1 = _create_division(client, "Kyorugi A", "kyorugi").get_json()["id"]
+        div2 = _create_division(client, "Kyorugi B", "kyorugi").get_json()["id"]
+        _add_competitors(client, div1, ["Alice", "Bob"])
+        _add_competitors(client, div2, ["Carol", "Dave"])
+        _generate_bracket(client, div1)
+        _generate_bracket(client, div2)
+
+        match1 = Match.query.filter_by(division_id=div1).first()
+        match2 = Match.query.filter_by(division_id=div2).first()
+
+        client.put(
+            f"/matches/{match1.id}/schedule",
+            data={"ring_id": str(ring_id), "ring_sequence": "5"},
+        )
+        db.session.refresh(match1)
+        assert match1.match_number == (ring_id * 100) + 5
+
+        resp2 = client.put(
+            f"/matches/{match2.id}/schedule",
+            data={"ring_id": str(ring_id), "ring_sequence": "5"},
+        )
+        assert resp2.status_code == 200
+        assert b"Error" in resp2.data
+        db.session.refresh(match2)
+        assert match2.match_number is None
+
     def test_ring_scorekeeper(self, client):
         ring_id = _create_ring(client, "Ring 1").get_json()["id"]
         resp = client.get(f"/ring/{ring_id}/scorekeeper")
@@ -917,3 +1074,40 @@ class TestPageRoutes:
         # The submit button should not have the disabled attribute
         assert b'class="submit-btn"' in resp.data
         assert b'class="submit-btn" disabled' not in resp.data
+
+    def test_ring_scorekeeper_filters_by_event_type(self, client):
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_kyorugi = _create_division(client, "Kyorugi Division", "kyorugi").get_json()["id"]
+        div_poomsae = _create_division(client, "Poomsae Division", "poomsae").get_json()["id"]
+
+        _add_competitors(client, div_kyorugi, ["Alice", "Bob"])
+        _add_competitors(client, div_poomsae, ["Carol", "Dave"])
+        _generate_bracket(client, div_kyorugi)
+        _generate_bracket(client, div_poomsae)
+
+        match_k = Match.query.filter_by(division_id=div_kyorugi).first()
+        match_p = Match.query.filter_by(division_id=div_poomsae).first()
+
+        client.put(
+            f"/matches/{match_k.id}/schedule",
+            data={"ring_id": str(ring_id), "ring_sequence": "1"},
+        )
+        client.put(
+            f"/matches/{match_p.id}/schedule",
+            data={"ring_id": str(ring_id), "ring_sequence": "2"},
+        )
+
+        resp_k = client.get(f"/ring/{ring_id}/scorekeeper?event_type=kyorugi")
+        assert resp_k.status_code == 200
+        assert b"Kyorugi Division" in resp_k.data
+        assert b"Poomsae Division" not in resp_k.data
+
+        resp_p = client.get(f"/ring/{ring_id}/scorekeeper?event_type=poomsae")
+        assert resp_p.status_code == 200
+        assert b"Poomsae Division" in resp_p.data
+        assert b"Kyorugi Division" not in resp_p.data
+
+    def test_ring_scorekeeper_invalid_event_type(self, client):
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        resp = client.get(f"/ring/{ring_id}/scorekeeper?event_type=unknown")
+        assert resp.status_code == 400

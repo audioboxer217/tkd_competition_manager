@@ -30,6 +30,40 @@
             font-size: 1.5rem;
         }
 
+        .event-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 15px;
+        }
+
+        .event-tab {
+            display: inline-block;
+            padding: 6px 14px;
+            border-radius: 6px;
+            border: 1px solid #cbd5e1;
+            background: #e2e8f0;
+            color: #475569;
+            text-decoration: none;
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+
+        .event-tab:hover {
+            background: #cbd5e1;
+            color: #334155;
+        }
+
+        .event-tab.active {
+            background: #2563eb;
+            color: white;
+            border-color: #2563eb;
+        }
+
+        .event-tab.active:hover {
+            background: #1d4ed8;
+            color: white;
+        }
+
         .match-card {
             background: white;
             border-radius: 8px;
@@ -150,8 +184,14 @@
 
     <div class="header">
         <span>Scorekeeper Console</span>
-        <h1>{{ ring.name }}</h1>
+        <h1>{{ ring.name }} - {{ event_type|capitalize }}</h1>
         <a href="/admin" class="back-link">&larr; Back to Admin</a>
+    </div>
+    <div class="event-tabs">
+        <a href="/ring/{{ ring.id }}/scorekeeper?event_type=kyorugi"
+            class="event-tab {{ 'active' if event_type == 'kyorugi' else '' }}">Kyorugi</a>
+        <a href="/ring/{{ ring.id }}/scorekeeper?event_type=poomsae"
+            class="event-tab {{ 'active' if event_type == 'poomsae' else '' }}">Poomsae</a>
     </div>
     <div id="matches-container">
         {% if not matches %}
