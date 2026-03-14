@@ -868,6 +868,32 @@ class TestPageRoutes:
         resp = client.get("/admin/divisions/9999/setup")
         assert resp.status_code == 404
 
+    def test_ui_bracket_controls_no_competitors(self, client):
+        div_id = _create_division(client).get_json()["id"]
+        resp = client.get(f"/ui/divisions/{div_id}/bracket_controls")
+        assert resp.status_code == 200
+        assert b"Add competitors above" in resp.data
+
+    def test_ui_bracket_controls_with_competitors(self, client):
+        div_id = _create_division(client).get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        resp = client.get(f"/ui/divisions/{div_id}/bracket_controls")
+        assert resp.status_code == 200
+        assert b"Generate Bracket" in resp.data
+
+    def test_ui_bracket_controls_with_bracket(self, client):
+        div_id = _create_division(client).get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _generate_bracket(client, div_id)
+        resp = client.get(f"/ui/divisions/{div_id}/bracket_controls")
+        assert resp.status_code == 200
+        assert b"Manage" in resp.data
+        assert b"Regenerate Bracket" in resp.data
+
+    def test_ui_bracket_controls_not_found(self, client):
+        resp = client.get("/ui/divisions/9999/bracket_controls")
+        assert resp.status_code == 404
+
     def test_ui_bracket_view(self, client):
         div_id = _create_division(client).get_json()["id"]
         resp = client.get(f"/ui/divisions/{div_id}/bracket")
