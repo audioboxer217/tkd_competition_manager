@@ -209,39 +209,6 @@ def _division_name_display_html(division):
 <button hx-get="/ui/divisions/{division.id}/name_form" hx-target="#division-name-header" hx-swap="innerHTML" style="background: #64748b; padding: 5px 12px; width: auto; font-size: 0.85rem; margin-left: 12px;">Rename</button>"""
 
 
-def _bracket_controls_html(division):
-    """Return HTML fragment for bracket controls on the division setup page."""
-    if division.matches:
-        return f"""
-        <div style="padding: 15px; background: #d1fae5; border-radius: 4px; margin-bottom: 10px;">
-            <a href="/admin/divisions/{division.id}/bracket_manage"
-                style="display: inline-block; background: #059669; color: white; padding: 8px 16px; text-decoration: none; border-radius: 4px;">
-                Manage &amp; Schedule Bracket
-            </a>
-        </div>
-        <button class="generate-btn" style="background: #f59e0b;"
-                hx-post="/divisions/{division.id}/generate_bracket"
-                hx-target="#bracket-controls" hx-swap="innerHTML"
-                hx-confirm="Regenerate bracket? This will delete all existing match data and cannot be undone.">
-            Regenerate Bracket
-        </button>
-        """
-
-    competitors_exist = Competitor.query.filter_by(division_id=division.id).first() is not None
-    if competitors_exist:
-        return f"""
-        <p style="font-size: 0.9rem; color: #64748b;">Once all competitors are added, lock the division and
-            build the bracket.</p>
-        <button class="generate-btn"
-                hx-post="/divisions/{division.id}/generate_bracket"
-                hx-target="#bracket-controls" hx-swap="innerHTML">
-            Generate Bracket
-        </button>
-        """
-
-    return "<p style='font-size: 0.9rem; color: #64748b;'>Add competitors above, then generate the bracket.</p>"
-
-
 def _scorekeeper_match_card_html(match):
     """Return HTML fragment for a single scorekeeper match card."""
     has_tbd = not match.competitor1_id or not match.competitor2_id
@@ -751,7 +718,7 @@ def ui_competitors_list(div_id):
 @login_required
 def ui_bracket_controls(div_id):
     division = Division.query.get_or_404(div_id)
-    return _bracket_controls_html(division)
+    return render_template("_bracket_controls.html", division=division)
 
 
 @app.route("/ui/divisions/<int:div_id>/competitors/<int:comp_id>", methods=["DELETE"])
