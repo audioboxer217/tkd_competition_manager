@@ -123,6 +123,7 @@
             Setup</a></span>
     <span style="float: left;">
         <button class="save-btn" style="background: #f59e0b;" hx-post="/divisions/{{ division.id }}/generate_bracket"
+            hx-confirm="Are you sure? This will delete all existing matches and regenerate the bracket, including any scheduling and results."
             hx-swap="none" hx-on::after-request="window.location.reload()">
             Regenerate Bracket
         </button>
