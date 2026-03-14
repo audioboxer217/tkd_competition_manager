@@ -7,10 +7,10 @@ from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 from flask import Flask, Response, jsonify, redirect, render_template, render_template_string, request, session, url_for
-from markupsafe import escape
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import case
 from flask_wtf.csrf import CSRFProtect
+from markupsafe import escape
+from sqlalchemy import case
 from supabase import create_client
 from supabase_auth.errors import AuthApiError
 
@@ -61,9 +61,13 @@ class Ring(db.Model):
     matches = db.relationship("Match", backref="ring", lazy=True)
 
 
+VALID_EVENT_TYPES = {"poomsae", "kyorugi"}
+
+
 class Division(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)  # e.g., 'Male - Black Belt - Under 70kg'
+    event_type = db.Column(db.String(20), nullable=False, default="kyorugi")  # 'poomsae' or 'kyorugi'
     competitors = db.relationship("Competitor", backref="division", lazy=True)
     matches = db.relationship("Match", backref="division", lazy=True)
 
@@ -119,13 +123,16 @@ def manage_rings():
 def manage_divisions():
     if request.method == "POST":
         data = request.json
-        new_division = Division(name=data["name"])
+        event_type = data.get("event_type", "kyorugi")
+        if event_type not in VALID_EVENT_TYPES:
+            return jsonify({"error": "Invalid event type."}), 400
+        new_division = Division(name=data["name"], event_type=event_type)
         db.session.add(new_division)
         db.session.commit()
         return jsonify({"message": "Division created", "id": new_division.id}), 201
 
     divisions = Division.query.all()
-    return jsonify([{"id": d.id, "name": d.name} for d in divisions])
+    return jsonify([{"id": d.id, "name": d.name, "event_type": d.event_type} for d in divisions])
 
 
 @app.route("/divisions/<int:div_id>", methods=["DELETE", "PUT"])
@@ -200,6 +207,39 @@ def _division_name_display_html(division):
     name = escape(division.name)
     return f"""<h1 style="margin: 0; color: #0f172a;">{name}</h1>
 <button hx-get="/ui/divisions/{division.id}/name_form" hx-target="#division-name-header" hx-swap="innerHTML" style="background: #64748b; padding: 5px 12px; width: auto; font-size: 0.85rem; margin-left: 12px;">Rename</button>"""
+
+
+def _bracket_controls_html(division):
+    """Return HTML fragment for bracket controls on the division setup page."""
+    if division.matches:
+        return f"""
+        <div style="padding: 15px; background: #d1fae5; border-radius: 4px; margin-bottom: 10px;">
+            <a href="/admin/divisions/{division.id}/bracket_manage"
+                style="display: inline-block; background: #059669; color: white; padding: 8px 16px; text-decoration: none; border-radius: 4px;">
+                Manage &amp; Schedule Bracket
+            </a>
+        </div>
+        <button class="generate-btn" style="background: #f59e0b;"
+                hx-post="/divisions/{division.id}/generate_bracket"
+                hx-target="#bracket-controls" hx-swap="innerHTML"
+                hx-confirm="Regenerate bracket? This will delete all existing match data and cannot be undone.">
+            Regenerate Bracket
+        </button>
+        """
+
+    competitors_exist = Competitor.query.filter_by(division_id=division.id).first() is not None
+    if competitors_exist:
+        return f"""
+        <p style="font-size: 0.9rem; color: #64748b;">Once all competitors are added, lock the division and
+            build the bracket.</p>
+        <button class="generate-btn"
+                hx-post="/divisions/{division.id}/generate_bracket"
+                hx-target="#bracket-controls" hx-swap="innerHTML">
+            Generate Bracket
+        </button>
+        """
+
+    return "<p style='font-size: 0.9rem; color: #64748b;'>Add competitors above, then generate the bracket.</p>"
 
 
 @app.route("/divisions/<int:div_id>/generate_bracket", methods=["POST"])
@@ -421,17 +461,24 @@ def get_bracket_ui(div_id):
 # 1. Public Live Rings View
 @app.route("/ui/public_rings")
 def ui_public_rings():
+    event_type = request.args.get("event_type", "kyorugi")
+    if event_type not in VALID_EVENT_TYPES:
+        return "Invalid event type.", 400
+
     rings = Ring.query.all()
     # Find active/upcoming matches for each ring
     ring_data = []
     for ring in rings:
-        matches = Match.query.filter(
-            Match.ring_id == ring.id,
-            Match.status.in_(["Pending", "In Progress"]),
-            Match.match_number.isnot(None),
-        ).order_by(
-            case((Match.status == "In Progress", 0), else_=1), Match.match_number
-        ).all()
+        matches = (
+            Match.query.filter(
+                Match.ring_id == ring.id,
+                Match.division.has(event_type=event_type),
+                Match.status.in_(["Pending", "In Progress"]),
+                Match.match_number.isnot(None),
+            )
+            .order_by(case((Match.status == "In Progress", 0), else_=1), Match.match_number)
+            .all()
+        )
         for match in matches:
             match.comp_1 = (
                 f"{match.competitor1.name.split()[0][0]}. {match.competitor1.name.split()[-1]}" if match.competitor1 else "TBD"
@@ -533,13 +580,16 @@ def ui_delete_ring(ring_id):
 @login_required
 def ui_add_division():
     name = request.form.get("name")
-    new_div = Division(name=name)
+    event_type = request.form.get("event_type", "kyorugi")
+    if event_type not in VALID_EVENT_TYPES:
+        return "Invalid event type.", 400
+    new_div = Division(name=name, event_type=event_type)
     db.session.add(new_div)
     db.session.commit()
 
     return f"""
     <li>
-        <span>{new_div.name}</span>
+        <span>{escape(new_div.name)}</span>
         <div>
             <a href="/admin/divisions/{new_div.id}/setup" class="button" style="text-decoration: none; display: inline-block;">
                 Manage
@@ -548,7 +598,7 @@ def ui_add_division():
                     hx-delete="/ui/divisions/{new_div.id}" 
                     hx-target="closest li" 
                     hx-swap="outerHTML"
-                    hx-confirm="Delete division {new_div.name} and all its matches?">
+                    hx-confirm="Delete division '{escape(new_div.name)}' and all its matches?">
                 Delete
             </button>
         </div>
@@ -559,12 +609,18 @@ def ui_add_division():
 @app.route("/ui/divisions_list")
 @login_required
 def ui_divisions_list():
-    divisions = Division.query.all()
+    event_type = request.args.get("event_type")
+    if event_type and event_type not in VALID_EVENT_TYPES:
+        return "Invalid event type.", 400
+    query = Division.query
+    if event_type:
+        query = query.filter_by(event_type=event_type)
+    divisions = query.all()
     html = ""
     for d in divisions:
         html += f"""
         <li>
-            <span>{d.name}</span>
+            <span>{escape(d.name)}</span>
             <div>
                 <a href="/admin/divisions/{d.id}/setup" class="button" style="text-decoration: none; display: inline-block;">
                 Manage
@@ -573,7 +629,7 @@ def ui_divisions_list():
                         hx-delete="/ui/divisions/{d.id}" 
                         hx-target="closest li" 
                         hx-swap="outerHTML"
-                        hx-confirm="Delete division {d.name} and all its matches?">
+                        hx-confirm="Delete division '{escape(d.name)}' and all its matches?">
                     Delete
                 </button>
             </div>
@@ -627,6 +683,13 @@ def ui_add_competitors(div_id):
 @login_required
 def ui_competitors_list(div_id):
     return _competitors_list_html(div_id)
+
+
+@app.route("/ui/divisions/<int:div_id>/bracket_controls")
+@login_required
+def ui_bracket_controls(div_id):
+    division = Division.query.get_or_404(div_id)
+    return _bracket_controls_html(division)
 
 
 @app.route("/ui/divisions/<int:div_id>/competitors/<int:comp_id>", methods=["DELETE"])
@@ -728,9 +791,16 @@ def schedule_match_htmx(match_id):
         if not (1 <= ring_sequence_int <= 99):
             return "ring_sequence must be between 1 and 99.", 400
         proposed_match_number = (ring_id_int * 100) + ring_sequence_int
-        duplicate = Match.query.filter(
-            Match.match_number == proposed_match_number, Match.id != match.id
-        ).first()
+        event_type = match.division.event_type
+        duplicate = (
+            Match.query.join(Division)
+            .filter(
+                Division.event_type == event_type,
+                Match.match_number == proposed_match_number,
+                Match.id != match.id,
+            )
+            .first()
+        )
         if duplicate:
             rings = Ring.query.all()
             ring_options = "".join(
@@ -805,18 +875,22 @@ def schedule_match_htmx(match_id):
 @login_required
 def ring_scorekeeper(ring_id):
     ring = Ring.query.get_or_404(ring_id)
+    event_type = request.args.get("event_type", "kyorugi")
+    if event_type not in VALID_EVENT_TYPES:
+        return "Invalid event type.", 400
 
     # Get all pending or in-progress matches for this ring, ordered by match number
     matches = (
         Match.query.filter(
             Match.ring_id == ring.id,
+            Match.division.has(event_type=event_type),
             Match.status.in_(["Pending", "In Progress"]),
         )
         .order_by(Match.match_number)
         .all()
     )
 
-    return render_template("scorekeeper.html", ring=ring, matches=matches)
+    return render_template("scorekeeper.html", ring=ring, matches=matches, event_type=event_type)
 
 
 @app.route("/ui/matches/<int:match_id>/result", methods=["POST"])

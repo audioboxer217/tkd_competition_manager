@@ -20,6 +20,37 @@
             color: #0f172a;
         }
 
+        .event-tabs {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            margin-bottom: 20px;
+        }
+
+        .tab-btn {
+            background: #e2e8f0;
+            color: #475569;
+            border: 1px solid #cbd5e1;
+            padding: 6px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+
+        .tab-btn:hover {
+            background: #cbd5e1;
+        }
+
+        .tab-btn.active {
+            background: #2563eb;
+            color: white;
+            border-color: #2563eb;
+        }
+
+        .tab-btn.active:hover {
+            background: #1d4ed8;
+        }
+
         /* Grid layout for Rings */
         .ring-grid {
             display: grid;
@@ -100,9 +131,43 @@
         <p>Auto-updating every 15 seconds...</p>
     </div>
 
-    <div class="ring-grid" hx-get="/ui/public_rings" hx-trigger="load, every 15s" hx-swap="innerHTML">
+    <div class="event-tabs">
+        <button id="tab-kyorugi" class="tab-btn active" type="button" onclick="switchLiveEvent('kyorugi')">Kyorugi</button>
+        <button id="tab-poomsae" class="tab-btn" type="button" onclick="switchLiveEvent('poomsae')">Poomsae</button>
+    </div>
+    
+    <div id="ring-grid" class="ring-grid" hx-get="/ui/public_rings?event_type=kyorugi" hx-trigger="load, every 15s"
+        hx-swap="innerHTML">
         <div style="text-align: center; width: 100%; color: #64748b;">Loading live rings...</div>
     </div>
+
+    <script>
+        const LIVE_EVENT_STORAGE_KEY = 'liveViewEventType';
+        const VALID_EVENT_TYPES = ['kyorugi', 'poomsae'];
+
+        function applyLiveEvent(eventType) {
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById('tab-' + eventType).classList.add('active');
+
+            const ringGrid = document.getElementById('ring-grid');
+            ringGrid.setAttribute('hx-get', '/ui/public_rings?event_type=' + eventType);
+        }
+
+        function switchLiveEvent(eventType) {
+            if (!VALID_EVENT_TYPES.includes(eventType)) {
+                return;
+            }
+            localStorage.setItem(LIVE_EVENT_STORAGE_KEY, eventType);
+            applyLiveEvent(eventType);
+            htmx.ajax('GET', '/ui/public_rings?event_type=' + eventType, { target: '#ring-grid', swap: 'innerHTML' });
+        }
+
+        (function initializeLiveEventTab() {
+            const savedEventType = localStorage.getItem(LIVE_EVENT_STORAGE_KEY);
+            const initialEventType = VALID_EVENT_TYPES.includes(savedEventType) ? savedEventType : 'kyorugi';
+            applyLiveEvent(initialEventType);
+        })();
+    </script>
 
 </body>
 
