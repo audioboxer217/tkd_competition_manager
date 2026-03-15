@@ -122,11 +122,11 @@
     <span style="float: right;"><a href="/admin/divisions/{{ division.id }}/setup" class="back-link">&larr; Back to
             Setup</a></span>
     <span style="float: left;">
-        <button class="save-btn" style="background: #f59e0b;" hx-post="/divisions/{{ division.id }}/generate_bracket"
+        <!-- <button class="save-btn" style="background: #f59e0b;" hx-post="/divisions/{{ division.id }}/generate_bracket"
             hx-confirm="Are you sure? This will delete all existing matches and regenerate the bracket, including any scheduling and results."
             hx-swap="none" hx-on::after-request="window.location.reload()">
             Regenerate Bracket
-        </button>
+        </button> -->
     </span>
     <div class="bracket-container">
         {% for round_name, match_list in rounds.items() %}
