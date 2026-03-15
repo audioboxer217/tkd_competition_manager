@@ -482,7 +482,11 @@ def _build_bracket_display(matches):
 
 @app.route("/divisions/<int:div_id>/bracket_ui", methods=["GET"])
 def get_bracket_ui(div_id):
-    matches = Match.query.filter_by(division_id=div_id).all()
+    matches = (
+        Match.query.filter_by(division_id=div_id)
+        .order_by(Match.id)
+        .all()
+    )
 
     if not matches:
         return "<p>No bracket generated yet.</p>", 404
