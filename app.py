@@ -462,8 +462,12 @@ def _compute_placements(matches):
     loser = db.session.get(Competitor, loser_id) if loser_id else None
 
     semi_losers = []
+    # Semifinal matches are those that feed directly into the championship match.
+    # Using the bracket structure (next_match_id) rather than round_name ensures
+    # we correctly identify semifinals even when they are labeled "Round 1" in
+    # small brackets (e.g., 4-competitor divisions).
     for m in matches:
-        if m.round_name == "Semi-Final" and m.status in completed_statuses and m.winner_id:
+        if m.next_match_id == championship.id and m.status in completed_statuses and m.winner_id:
             sf_loser_id = (
                 m.competitor2_id if m.winner_id == m.competitor1_id else m.competitor1_id
             )
