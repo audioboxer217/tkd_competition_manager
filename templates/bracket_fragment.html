@@ -37,3 +37,31 @@
     </div>
     {% endfor %}
 </div>
+
+{% if placements %}
+<div class="placements-container">
+    <table class="placements-table">
+        <thead>
+            <tr>
+                <th colspan="2">Medal Placements</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td class="medal gold">🥇 1st Place</td>
+                <td>{{ placements.first }}</td>
+            </tr>
+            <tr>
+                <td class="medal silver">🥈 2nd Place</td>
+                <td>{{ placements.second }}</td>
+            </tr>
+            {% for name in placements.third %}
+            <tr>
+                <td class="medal bronze">🥉 3rd Place</td>
+                <td>{{ name }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
