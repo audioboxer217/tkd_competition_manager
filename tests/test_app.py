@@ -1021,6 +1021,94 @@ class TestPageRoutes:
         resp = client.get("/admin/divisions/9999/bracket_manage")
         assert resp.status_code == 404
 
+    def test_results_page(self, client):
+        resp = client.get("/results")
+        assert resp.status_code == 200
+        assert b"Tournament Results" in resp.data
+        assert b"Kyorugi" in resp.data
+        assert b"Poomsae" in resp.data
+        assert b"Live View" in resp.data
+
+    def test_results_page_links_from_index(self, client):
+        resp = client.get("/")
+        assert resp.status_code == 200
+        assert b"/results" in resp.data
+        assert b"View Results" in resp.data
+
+    def test_ui_results_divisions_empty(self, client):
+        resp = client.get("/ui/results_divisions?event_type=kyorugi")
+        assert resp.status_code == 200
+        assert b"No divisions found" in resp.data
+
+    def test_ui_results_divisions_kyorugi(self, client):
+        _create_division(client, "Kyorugi Div", "kyorugi")
+        _create_division(client, "Poomsae Div", "poomsae")
+        resp = client.get("/ui/results_divisions?event_type=kyorugi")
+        assert resp.status_code == 200
+        assert b"Kyorugi Div" in resp.data
+        assert b"Poomsae Div" not in resp.data
+
+    def test_ui_results_divisions_poomsae(self, client):
+        _create_division(client, "Kyorugi Div", "kyorugi")
+        _create_division(client, "Poomsae Div", "poomsae")
+        resp = client.get("/ui/results_divisions?event_type=poomsae")
+        assert resp.status_code == 200
+        assert b"Poomsae Div" in resp.data
+        assert b"Kyorugi Div" not in resp.data
+
+    def test_ui_results_divisions_invalid_event_type(self, client):
+        resp = client.get("/ui/results_divisions?event_type=invalid")
+        assert resp.status_code == 400
+
+    def test_ui_results_divisions_bracket_link(self, client):
+        div_id = _create_division(client, "Test Div", "kyorugi").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _generate_bracket(client, div_id)
+        resp = client.get("/ui/results_divisions?event_type=kyorugi")
+        assert resp.status_code == 200
+        assert f"/ui/divisions/{div_id}/bracket".encode() in resp.data
+
+    def test_ui_results_divisions_status_no_bracket(self, client):
+        _create_division(client, "No Bracket Div", "kyorugi")
+        resp = client.get("/ui/results_divisions?event_type=kyorugi")
+        assert resp.status_code == 200
+        assert b"No bracket" in resp.data
+
+    def test_ui_results_divisions_status_pending(self, client):
+        div_id = _create_division(client, "Pending Div", "kyorugi").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _generate_bracket(client, div_id)
+        resp = client.get("/ui/results_divisions?event_type=kyorugi")
+        assert resp.status_code == 200
+        assert b"Pending" in resp.data
+
+    def test_ui_results_divisions_status_in_progress(self, client):
+        div_id = _create_division(client, "InProgress Div", "kyorugi").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob", "Carol", "Dave"])
+        _generate_bracket(client, div_id)
+        # Complete only one of the Round 1 matches to get "In Progress" status
+        match = Match.query.filter_by(division_id=div_id, round_name="Round 1").first()
+        client.post(
+            f"/ui/matches/{match.id}/result",
+            data={"status": "Completed", "winner_id": match.competitor1_id},
+        )
+        resp = client.get("/ui/results_divisions?event_type=kyorugi")
+        assert resp.status_code == 200
+        assert b"In Progress" in resp.data
+
+    def test_ui_results_divisions_status_completed(self, client):
+        div_id = _create_division(client, "Completed Div", "kyorugi").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _generate_bracket(client, div_id)
+        match = Match.query.filter_by(division_id=div_id).first()
+        client.post(
+            f"/ui/matches/{match.id}/result",
+            data={"status": "Completed", "winner_id": match.competitor1_id},
+        )
+        resp = client.get("/ui/results_divisions?event_type=kyorugi")
+        assert resp.status_code == 200
+        assert b"Completed" in resp.data
+
 
 # ---------------------------------------------------------------------------
 # Event types
