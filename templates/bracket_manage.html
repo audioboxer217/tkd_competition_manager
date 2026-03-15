@@ -129,11 +129,11 @@
         </button> -->
     </span>
     <div class="bracket-container">
-        {% for round_name, match_list in rounds.items() %}
+        {% for col in columns %}
         <div class="round-column">
-            <div class="round-title">{{ round_name }}</div>
+            <div class="round-title">{{ col.title }}</div>
 
-            {% for match in match_list %}
+            {% for match in col.matches %}
             <div class={{ "match-card" if match.status != "Completed (Bye)"
                 else "match-card-hidden" }} id="match-{{ match.id }}">
 

@@ -894,12 +894,9 @@ def manage_bracket_page(div_id):
     matches = Match.query.filter_by(division_id=div_id).all()
     rings = Ring.query.all()
 
-    # Group matches by round
-    grouped_matches = defaultdict(list)
-    for match in matches:
-        grouped_matches[match.round_name].append(match)
+    columns = _build_bracket_display(matches)
 
-    return render_template("bracket_manage.html", division=division, rounds=grouped_matches, rings=rings)
+    return render_template("bracket_manage.html", division=division, columns=columns, rings=rings)
 
 
 @app.route("/matches/<int:match_id>/schedule", methods=["PUT"])
