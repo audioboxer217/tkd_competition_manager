@@ -140,12 +140,36 @@ class TestBracketAPI:
         resp = _generate_bracket(client, div_id)
         assert resp.status_code == 200
         assert b"Success" in resp.data
+        # 2 competitors → 1 match → named "Final"
+        assert Match.query.filter_by(division_id=div_id, round_name="Final").count() == 1
 
     def test_generate_bracket_four_competitors(self, client):
         div_id = _create_division(client).get_json()["id"]
         _add_competitors(client, div_id, ["A", "B", "C", "D"])
         resp = _generate_bracket(client, div_id)
         assert resp.status_code == 200
+        # 4 competitors → 2 Semi-Final matches + 1 Final
+        assert Match.query.filter_by(division_id=div_id, round_name="Semi-Final").count() == 2
+        assert Match.query.filter_by(division_id=div_id, round_name="Final").count() == 1
+
+    def test_generate_bracket_eight_competitors_round_names(self, client):
+        div_id = _create_division(client).get_json()["id"]
+        _add_competitors(client, div_id, ["A", "B", "C", "D", "E", "F", "G", "H"])
+        _generate_bracket(client, div_id)
+        # 8 competitors → Quarter-Final (4), Semi-Final (2), Final (1)
+        assert Match.query.filter_by(division_id=div_id, round_name="Quarter-Final").count() == 4
+        assert Match.query.filter_by(division_id=div_id, round_name="Semi-Final").count() == 2
+        assert Match.query.filter_by(division_id=div_id, round_name="Final").count() == 1
+
+    def test_generate_bracket_sixteen_competitors_round_names(self, client):
+        div_id = _create_division(client).get_json()["id"]
+        _add_competitors(client, div_id, [str(i) for i in range(1, 17)])
+        _generate_bracket(client, div_id)
+        # 16 competitors → Round of 16 (8), Quarter-Final (4), Semi-Final (2), Final (1)
+        assert Match.query.filter_by(division_id=div_id, round_name="Round of 16").count() == 8
+        assert Match.query.filter_by(division_id=div_id, round_name="Quarter-Final").count() == 4
+        assert Match.query.filter_by(division_id=div_id, round_name="Semi-Final").count() == 2
+        assert Match.query.filter_by(division_id=div_id, round_name="Final").count() == 1
 
     def test_generate_bracket_three_competitors_creates_bye(self, client):
         div_id = _create_division(client).get_json()["id"]
@@ -188,7 +212,7 @@ class TestMatchResultAPI:
         _add_competitors(client, div_id, ["Alice", "Bob"])
         _generate_bracket(client, div_id)
 
-        match = Match.query.filter_by(division_id=div_id, round_name="Round 1").first()
+        match = Match.query.filter_by(division_id=div_id, round_name="Final").first()
         winner_id = match.competitor1_id
 
         resp = client.post(
@@ -203,7 +227,7 @@ class TestMatchResultAPI:
         _add_competitors(client, div_id, ["Alice", "Bob"])
         _generate_bracket(client, div_id)
 
-        match = Match.query.filter_by(division_id=div_id, round_name="Round 1").first()
+        match = Match.query.filter_by(division_id=div_id, round_name="Final").first()
         resp = client.post(f"/matches/{match.id}/result", json={"status": "Completed"})
         assert resp.status_code == 400
 
@@ -212,7 +236,7 @@ class TestMatchResultAPI:
         _add_competitors(client, div_id, ["Alice", "Bob"])
         _generate_bracket(client, div_id)
 
-        match = Match.query.filter_by(division_id=div_id, round_name="Round 1").first()
+        match = Match.query.filter_by(division_id=div_id, round_name="Final").first()
         winner_id = match.competitor2_id
 
         resp = client.post(
@@ -228,15 +252,15 @@ class TestMatchResultAPI:
     def test_bracket_advancement_after_result(self, client):
         """Winner should be placed into the next match after recording result.
 
-        Uses 4 competitors so Round 1 produces two matches each with a next_match_id
-        pointing to the Semi-Final/Final match. Verifies that the winning competitor
+        Uses 4 competitors so the Semi-Final produces two matches each with a next_match_id
+        pointing to the Final match. Verifies that the winning competitor
         appears as competitor1 or competitor2 of that next match.
         """
         div_id = _create_division(client).get_json()["id"]
         _add_competitors(client, div_id, ["A", "B", "C", "D"])
         _generate_bracket(client, div_id)
 
-        r1_matches = Match.query.filter_by(division_id=div_id, round_name="Round 1").all()
+        r1_matches = Match.query.filter_by(division_id=div_id, round_name="Semi-Final").all()
         match = r1_matches[0]
         winner_id = match.competitor1_id
 
@@ -699,7 +723,7 @@ class TestUIMatchResult:
         _add_competitors(client, div_id, ["Alice", "Bob"])
         _generate_bracket(client, div_id)
 
-        match = Match.query.filter_by(division_id=div_id, round_name="Round 1").first()
+        match = Match.query.filter_by(division_id=div_id, round_name="Final").first()
         resp = client.post(
             f"/ui/matches/{match.id}/result",
             data={"status": "In Progress"},
@@ -714,7 +738,7 @@ class TestUIMatchResult:
         _add_competitors(client, div_id, ["Alice", "Bob"])
         _generate_bracket(client, div_id)
 
-        match = Match.query.filter_by(division_id=div_id, round_name="Round 1").first()
+        match = Match.query.filter_by(division_id=div_id, round_name="Final").first()
         winner_id = match.competitor1_id
 
         resp = client.post(
@@ -729,7 +753,7 @@ class TestUIMatchResult:
         _add_competitors(client, div_id, ["Alice", "Bob"])
         _generate_bracket(client, div_id)
 
-        match = Match.query.filter_by(division_id=div_id, round_name="Round 1").first()
+        match = Match.query.filter_by(division_id=div_id, round_name="Final").first()
         resp = client.post(
             f"/ui/matches/{match.id}/result",
             data={"status": "Completed"},
@@ -741,7 +765,7 @@ class TestUIMatchResult:
         _add_competitors(client, div_id, ["Alice", "Bob"])
         _generate_bracket(client, div_id)
 
-        match = Match.query.filter_by(division_id=div_id, round_name="Round 1").first()
+        match = Match.query.filter_by(division_id=div_id, round_name="Final").first()
         winner_id = match.competitor2_id
 
         resp = client.post(
@@ -756,7 +780,7 @@ class TestUIMatchResult:
         _add_competitors(client, div_id, ["Alice", "Bob"])
         _generate_bracket(client, div_id)
 
-        match = Match.query.filter_by(division_id=div_id, round_name="Round 1").first()
+        match = Match.query.filter_by(division_id=div_id, round_name="Final").first()
         winner_id = match.competitor1_id
 
         resp = client.post(
@@ -775,7 +799,7 @@ class TestUIMatchResult:
         _add_competitors(client, div_id, ["Alice", "Bob"])
         _generate_bracket(client, div_id)
 
-        match = Match.query.filter_by(division_id=div_id, round_name="Round 1").first()
+        match = Match.query.filter_by(division_id=div_id, round_name="Final").first()
         winner_id = match.competitor2_id
 
         resp = client.post(
@@ -802,7 +826,7 @@ class TestUIMatchResult:
                 data={"ring_id": str(ring_id), "ring_sequence": str(seq)},
             )
 
-        first_match = Match.query.filter_by(division_id=div_id, round_name="Round 1").first()
+        first_match = Match.query.filter_by(division_id=div_id, round_name="Semi-Final").first()
         winner = db.session.get(Competitor, first_match.competitor1_id)
 
         resp = client.post(
@@ -821,9 +845,9 @@ class TestUIMatchResult:
         _add_competitors(client, div_id, ["Alice", "Bob", "Carol", "Dave"])
         _generate_bracket(client, div_id)
 
-        # Complete both Round 1 matches so the Final's competitors are populated
-        round1_matches = Match.query.filter_by(division_id=div_id, round_name="Round 1").all()
-        for m in round1_matches:
+        # Complete both Semi-Final matches so the Final's competitors are populated
+        semi_final_matches = Match.query.filter_by(division_id=div_id, round_name="Semi-Final").all()
+        for m in semi_final_matches:
             client.post(
                 f"/ui/matches/{m.id}/result",
                 data={"status": "Completed", "winner_id": str(m.competitor1_id)},
@@ -1086,8 +1110,8 @@ class TestPageRoutes:
         div_id = _create_division(client, "InProgress Div", "kyorugi").get_json()["id"]
         _add_competitors(client, div_id, ["Alice", "Bob", "Carol", "Dave"])
         _generate_bracket(client, div_id)
-        # Complete only one of the Round 1 matches to get "In Progress" status
-        match = Match.query.filter_by(division_id=div_id, round_name="Round 1").first()
+        # Complete only one of the Semi-Final matches to get "In Progress" status
+        match = Match.query.filter_by(division_id=div_id, round_name="Semi-Final").first()
         client.post(
             f"/ui/matches/{match.id}/result",
             data={"status": "Completed", "winner_id": match.competitor1_id},
@@ -1376,21 +1400,21 @@ class TestMedalPlacements:
         assert b"3rd Place" not in resp.data
 
     def test_placements_four_competitors(self, client):
-        """4-competitor bracket (Round 1 → Final, no 'Semi-Final' round name):
-        both Round 1 losers appear as 3rd place.
+        """4-competitor bracket (Semi-Final → Final):
+        both Semi-Final losers appear as 3rd place.
 
         4-competitor bracket layout:
-          R1_1: Alice vs Bob   → winner advances to Final
-          R1_2: Carol vs Dave  → winner advances to Final
-          Final: R1_1 winner vs R1_2 winner
-        The two Round 1 losers are the bronze medalists (their matches feed
+          SF_1: Alice vs Bob   → winner advances to Final
+          SF_2: Carol vs Dave  → winner advances to Final
+          Final: SF_1 winner vs SF_2 winner
+        The two Semi-Final losers are the bronze medalists (their matches feed
         directly into the championship via next_match_id).
         """
         div_id = _create_division(client).get_json()["id"]
         _add_competitors(client, div_id, ["Alice", "Bob", "Carol", "Dave"])
         _generate_bracket(client, div_id)
 
-        r1_matches = Match.query.filter_by(division_id=div_id, round_name="Round 1").all()
+        r1_matches = Match.query.filter_by(division_id=div_id, round_name="Semi-Final").all()
         assert len(r1_matches) == 2
 
         r1_loser_names = []
@@ -1432,14 +1456,14 @@ class TestMedalPlacements:
             assert loser_name.encode() in resp.data
 
     def test_placements_with_semifinals(self, client):
-        """Bracket with Semi-Finals (5 competitors → 3 byes in Round 1):
+        """Bracket with Quarter-Finals (5 competitors → 3 byes in Quarter-Final round):
         all four placements are shown after the Final is completed.
 
         5-competitor bracket layout:
-          R1_1: Alice vs Eve  (real match)
-          R1_2: Bob  vs --    (bye → Bob advances)
-          R1_3: Carol vs --   (bye → Carol advances)
-          R1_4: Dave  vs --   (bye → Dave advances)
+          QF_1: Alice vs Eve  (real match)
+          QF_2: Bob  vs --    (bye → Bob advances)
+          QF_3: Carol vs --   (bye → Carol advances)
+          QF_4: Dave  vs --   (bye → Dave advances)
         Semi-Finals:
           SF_1: Eve-or-Alice vs Bob
           SF_2: Carol vs Dave
@@ -1449,8 +1473,8 @@ class TestMedalPlacements:
         _add_competitors(client, div_id, ["Alice", "Bob", "Carol", "Dave", "Eve"])
         _generate_bracket(client, div_id)
 
-        # Step 1: Complete the only real Round 1 match (Alice vs Eve)
-        r1_real = Match.query.filter_by(division_id=div_id, round_name="Round 1").filter(
+        # Step 1: Complete the only real Quarter-Final match (Alice vs Eve)
+        r1_real = Match.query.filter_by(division_id=div_id, round_name="Quarter-Final").filter(
             Match.competitor1_id.isnot(None), Match.competitor2_id.isnot(None)
         ).first()
         assert r1_real is not None

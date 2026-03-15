@@ -134,7 +134,7 @@
             <div class="round-title">{{ round_name }}</div>
 
             {% for match in match_list %}
-            <div class={{ "match-card" if round_name!='Round 1' or (match.competitor1 and match.competitor2)
+            <div class={{ "match-card" if match.status != "Completed (Bye)"
                 else "match-card-hidden" }} id="match-{{ match.id }}">
 
                 <div class="match-body">
