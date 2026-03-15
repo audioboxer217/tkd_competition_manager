@@ -420,6 +420,118 @@ class TestUIRings:
         resp = client.get("/ui/public_rings?event_type=unknown")
         assert resp.status_code == 400
 
+    def test_ui_public_rings_shows_last_completed_match(self, client):
+        """Most recently completed match appears at the top with W/L indicators."""
+        ring = Ring(name="Ring 1")
+        division = Division(name="Test Division", event_type="kyorugi")
+        db.session.add_all([ring, division])
+        db.session.flush()
+
+        c1 = Competitor(name="Alice Smith", division_id=division.id)
+        c2 = Competitor(name="Bob Jones", division_id=division.id)
+        c3 = Competitor(name="Carol White", division_id=division.id)
+        c4 = Competitor(name="Dave Brown", division_id=division.id)
+        db.session.add_all([c1, c2, c3, c4])
+        db.session.flush()
+
+        # Completed match — Alice wins
+        m_done = Match(
+            ring_id=ring.id, division_id=division.id,
+            competitor1_id=c1.id, competitor2_id=c2.id,
+            status="Completed", winner_id=c1.id, match_number=100, round_name="Round 1"
+        )
+        # Upcoming pending match
+        m_pending = Match(
+            ring_id=ring.id, division_id=division.id,
+            competitor1_id=c3.id, competitor2_id=c4.id,
+            status="Pending", match_number=101, round_name="Round 1"
+        )
+        db.session.add_all([m_done, m_pending])
+        db.session.commit()
+
+        resp = client.get("/ui/public_rings")
+        assert resp.status_code == 200
+        body = resp.data.decode()
+
+        # Completed match appears (with W/L indicators)
+        assert "A. Smith" in body
+        assert "B. Jones" in body
+        assert "result-win" in body
+        assert "result-loss" in body
+        # Pending match also appears
+        assert "C. White" in body
+        assert "D. Brown" in body
+
+        # Completed match block appears before the pending match block
+        assert body.index("A. Smith") < body.index("C. White")
+
+    def test_ui_public_rings_limit_four_matches(self, client):
+        """Only up to 4 pending/in-progress matches are shown."""
+        ring = Ring(name="Ring 1")
+        division = Division(name="Test Division", event_type="kyorugi")
+        db.session.add_all([ring, division])
+        db.session.flush()
+
+        competitors = [Competitor(name=f"Competitor {i}", division_id=division.id) for i in range(1, 11)]
+        db.session.add_all(competitors)
+        db.session.flush()
+
+        # Create 5 pending matches — only 4 should appear
+        for i in range(5):
+            m = Match(
+                ring_id=ring.id, division_id=division.id,
+                competitor1_id=competitors[i * 2].id,
+                competitor2_id=competitors[i * 2 + 1].id,
+                status="Pending", match_number=200 + i, round_name="Round 1"
+            )
+            db.session.add(m)
+        db.session.commit()
+
+        resp = client.get("/ui/public_rings")
+        assert resp.status_code == 200
+        body = resp.data.decode()
+
+        rendered_numbers = [int(n) for n in re.findall(r"<strong>(\d+)</strong>", body)]
+        assert len(rendered_numbers) == 4
+        assert rendered_numbers == [200, 201, 202, 203]
+
+    def test_ui_public_rings_most_recent_completed_by_match_number(self, client):
+        """When multiple completed matches exist, the one with the highest match_number is shown."""
+        ring = Ring(name="Ring 1")
+        division = Division(name="Test Division", event_type="kyorugi")
+        db.session.add_all([ring, division])
+        db.session.flush()
+
+        c1 = Competitor(name="Alice Smith", division_id=division.id)
+        c2 = Competitor(name="Bob Jones", division_id=division.id)
+        c3 = Competitor(name="Carol White", division_id=division.id)
+        c4 = Competitor(name="Dave Brown", division_id=division.id)
+        db.session.add_all([c1, c2, c3, c4])
+        db.session.flush()
+
+        m_older = Match(
+            ring_id=ring.id, division_id=division.id,
+            competitor1_id=c1.id, competitor2_id=c2.id,
+            status="Completed", winner_id=c1.id, match_number=100, round_name="Round 1"
+        )
+        m_newer = Match(
+            ring_id=ring.id, division_id=division.id,
+            competitor1_id=c3.id, competitor2_id=c4.id,
+            status="Completed", winner_id=c3.id, match_number=101, round_name="Semi-Final"
+        )
+        db.session.add_all([m_older, m_newer])
+        db.session.commit()
+
+        resp = client.get("/ui/public_rings")
+        assert resp.status_code == 200
+        body = resp.data.decode()
+
+        # Only the most recent completed match (101) should be shown
+        assert "C. White" in body
+        assert "D. Brown" in body
+        assert "A. Smith" not in body
+        assert "B. Jones" not in body
+
 
 # ---------------------------------------------------------------------------
 # HTMX UI – Division routes
