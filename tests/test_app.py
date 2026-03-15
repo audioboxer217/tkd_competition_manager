@@ -1145,3 +1145,123 @@ class TestEventTypes:
         ring_id = _create_ring(client, "Ring 1").get_json()["id"]
         resp = client.get(f"/ring/{ring_id}/scorekeeper?event_type=unknown")
         assert resp.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Medal Placements
+# ---------------------------------------------------------------------------
+
+
+class TestMedalPlacements:
+    """Tests for the medal placement table shown on the bracket results page."""
+
+    def _complete_match(self, client, match, winner_id):
+        """Helper to record a completed result via the JSON API."""
+        return client.post(
+            f"/matches/{match.id}/result",
+            json={"status": "Completed", "winner_id": winner_id},
+        )
+
+    def test_no_placements_before_bracket_complete(self, client):
+        """Medal table should NOT appear while matches are still pending."""
+        div_id = _create_division(client).get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _generate_bracket(client, div_id)
+
+        resp = client.get(f"/divisions/{div_id}/bracket_ui")
+        assert resp.status_code == 200
+        assert b"Medal Placements" not in resp.data
+
+    def test_placements_two_competitors(self, client):
+        """2-competitor bracket: 1st and 2nd shown; no 3rd place entries."""
+        div_id = _create_division(client).get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _generate_bracket(client, div_id)
+
+        match = Match.query.filter_by(division_id=div_id).first()
+        winner_id = match.competitor1_id
+        loser_id = match.competitor2_id
+
+        self._complete_match(client, match, winner_id)
+
+        resp = client.get(f"/divisions/{div_id}/bracket_ui")
+        assert resp.status_code == 200
+        assert b"Medal Placements" in resp.data
+
+        winner = db.session.get(Competitor, winner_id)
+        loser = db.session.get(Competitor, loser_id)
+        assert winner.name.encode() in resp.data
+        assert loser.name.encode() in resp.data
+        assert b"3rd Place" not in resp.data
+
+    def test_placements_with_semifinals(self, client):
+        """Bracket with Semi-Finals (5 competitors → 3 byes in Round 1):
+        all four placements are shown after the Final is completed.
+
+        5-competitor bracket layout:
+          R1_1: Alice vs Eve  (real match)
+          R1_2: Bob  vs --    (bye → Bob advances)
+          R1_3: Carol vs --   (bye → Carol advances)
+          R1_4: Dave  vs --   (bye → Dave advances)
+        Semi-Finals:
+          SF_1: Eve-or-Alice vs Bob
+          SF_2: Carol vs Dave
+        Final: SF_1 winner vs SF_2 winner
+        """
+        div_id = _create_division(client).get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob", "Carol", "Dave", "Eve"])
+        _generate_bracket(client, div_id)
+
+        # Step 1: Complete the only real Round 1 match (Alice vs Eve)
+        r1_real = Match.query.filter_by(division_id=div_id, round_name="Round 1").filter(
+            Match.competitor1_id.isnot(None), Match.competitor2_id.isnot(None)
+        ).first()
+        assert r1_real is not None
+        r1_winner_id = r1_real.competitor1_id
+        r1_loser_id = r1_real.competitor2_id
+        resp = self._complete_match(client, r1_real, r1_winner_id)
+        assert resp.status_code == 200
+
+        # Step 2: Complete both Semi-Final matches
+        db.session.expire_all()
+        semi_finals = Match.query.filter_by(division_id=div_id, round_name="Semi-Final").all()
+        assert len(semi_finals) == 2
+
+        sf_loser_names = []
+        for sf in semi_finals:
+            db.session.expire_all()
+            sf = db.session.get(Match, sf.id)
+            assert sf.competitor1_id is not None, "SF competitor1 should be populated"
+            assert sf.competitor2_id is not None, "SF competitor2 should be populated"
+            sf_winner_id = sf.competitor1_id
+            sf_loser_id = sf.competitor2_id
+            resp = self._complete_match(client, sf, sf_winner_id)
+            assert resp.status_code == 200
+            sf_loser_names.append(db.session.get(Competitor, sf_loser_id).name)
+
+        # Step 3: Complete the Final
+        db.session.expire_all()
+        final = Match.query.filter_by(division_id=div_id, round_name="Final").first()
+        assert final is not None
+        final = db.session.get(Match, final.id)
+        assert final.competitor1_id is not None
+        assert final.competitor2_id is not None
+        final_winner_id = final.competitor1_id
+        final_loser_id = final.competitor2_id
+        resp = self._complete_match(client, final, final_winner_id)
+        assert resp.status_code == 200
+
+        # Verify medal placements appear in the bracket UI
+        resp = client.get(f"/divisions/{div_id}/bracket_ui")
+        assert resp.status_code == 200
+        assert b"Medal Placements" in resp.data
+        assert b"1st Place" in resp.data
+        assert b"2nd Place" in resp.data
+        assert b"3rd Place" in resp.data
+
+        final_winner = db.session.get(Competitor, final_winner_id)
+        final_loser = db.session.get(Competitor, final_loser_id)
+        assert final_winner.name.encode() in resp.data
+        assert final_loser.name.encode() in resp.data
+        for loser_name in sf_loser_names:
+            assert loser_name.encode() in resp.data

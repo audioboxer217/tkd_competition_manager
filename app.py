@@ -424,7 +424,58 @@ def get_bracket_ui(div_id):
     # Optional: Sort the dictionary so "Round 1" comes before "Quarter-Final", etc.
     # For a real app, you might use a round_number integer to sort easily.
 
-    return render_template("bracket_fragment.html", rounds=grouped_matches)
+    # Compute medal placements when the Final match is complete
+    placements = _compute_placements(matches)
+
+    return render_template("bracket_fragment.html", rounds=grouped_matches, placements=placements)
+
+
+def _compute_placements(matches):
+    """Return medal placements dict when the championship match is complete, else None.
+
+    The championship match is identified as the one with no ``next_match_id``
+    (the root of the bracket tree).  For standard bracket sizes this is the
+    match whose ``round_name`` is ``"Final"``, but for 2-competitor divisions
+    it will be the single ``"Round 1"`` match.
+
+    Returns a dict with keys:
+        "first"  – winner of the championship match (Competitor name string)
+        "second" – loser of the championship match
+        "third"  – list of loser names from Semi-Final matches (0, 1, or 2 entries)
+    """
+    completed_statuses = {"Completed", "Disqualification"}
+
+    # The championship match is the one with no next_match_id.
+    championship = next(
+        (m for m in matches if m.next_match_id is None and m.status in completed_statuses),
+        None,
+    )
+    if championship is None or not championship.winner_id:
+        return None
+
+    winner = db.session.get(Competitor, championship.winner_id)
+    loser_id = (
+        championship.competitor2_id
+        if championship.winner_id == championship.competitor1_id
+        else championship.competitor1_id
+    )
+    loser = db.session.get(Competitor, loser_id) if loser_id else None
+
+    semi_losers = []
+    for m in matches:
+        if m.round_name == "Semi-Final" and m.status in completed_statuses and m.winner_id:
+            sf_loser_id = (
+                m.competitor2_id if m.winner_id == m.competitor1_id else m.competitor1_id
+            )
+            sf_loser = db.session.get(Competitor, sf_loser_id) if sf_loser_id else None
+            if sf_loser:
+                semi_losers.append(sf_loser.name)
+
+    return {
+        "first": winner.name if winner else None,
+        "second": loser.name if loser else None,
+        "third": semi_losers,
+    }
 
 
 # --- HTMX FRAGMENT ROUTES ---
