@@ -1,0 +1,198 @@
+<style>
+    .htmx-confirm-modal {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    }
+
+    .htmx-confirm-modal[hidden] {
+        display: none;
+    }
+
+    .htmx-confirm-backdrop {
+        position: absolute;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.55);
+    }
+
+    .htmx-confirm-dialog {
+        position: relative;
+        width: min(92vw, 420px);
+        background: white;
+        border-radius: 10px;
+        box-shadow: 0 20px 40px rgba(15, 23, 42, 0.25);
+        padding: 20px;
+    }
+
+    .htmx-confirm-dialog h2 {
+        margin: 0 0 10px;
+        color: #0f172a;
+        font-size: 1.2rem;
+    }
+
+    .htmx-confirm-dialog p {
+        margin: 0;
+        color: #475569;
+        line-height: 1.5;
+        white-space: pre-wrap;
+    }
+
+    .htmx-confirm-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        margin-top: 20px;
+    }
+
+    .htmx-confirm-cancel,
+    .htmx-confirm-accept {
+        border: none;
+        border-radius: 6px;
+        padding: 10px 16px;
+        font-size: 0.95rem;
+        cursor: pointer;
+    }
+
+    .htmx-confirm-cancel {
+        background: #e2e8f0;
+        color: #334155;
+    }
+
+    .htmx-confirm-cancel:hover {
+        background: #cbd5e1;
+    }
+
+    .htmx-confirm-accept {
+        background: #2563eb;
+        color: white;
+    }
+
+    .htmx-confirm-accept:hover {
+        background: #1d4ed8;
+    }
+</style>
+
+<div id="htmx-confirm-modal" class="htmx-confirm-modal" hidden>
+    <div class="htmx-confirm-backdrop" data-confirm-close="1"></div>
+    <div class="htmx-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="htmx-confirm-title">
+        <h2 id="htmx-confirm-title">Confirm Action</h2>
+        <p id="htmx-confirm-message"></p>
+        <div class="htmx-confirm-actions">
+            <button id="htmx-confirm-cancel" class="htmx-confirm-cancel" type="button">Cancel</button>
+            <button id="htmx-confirm-accept" class="htmx-confirm-accept" type="button">Confirm</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    (function () {
+        if (window.tkdConfirmModalInstalled) {
+            return;
+        }
+
+        window.tkdConfirmModalInstalled = true;
+
+        const modal = document.getElementById('htmx-confirm-modal');
+        const message = document.getElementById('htmx-confirm-message');
+        const confirmButton = document.getElementById('htmx-confirm-accept');
+        const cancelButton = document.getElementById('htmx-confirm-cancel');
+
+        if (!modal || !message || !confirmButton || !cancelButton) {
+            return;
+        }
+
+        let pendingRequest = null;
+        let pendingClickElement = null;
+        let lastFocusedElement = null;
+
+        function closeModal() {
+            modal.hidden = true;
+            pendingRequest = null;
+            pendingClickElement = null;
+
+            if (lastFocusedElement) {
+                lastFocusedElement.focus();
+                lastFocusedElement = null;
+            }
+        }
+
+        function openModal(question, sourceElement, requestDetail) {
+            pendingRequest = requestDetail || null;
+            pendingClickElement = sourceElement instanceof HTMLElement ? sourceElement : null;
+            lastFocusedElement = sourceElement instanceof HTMLElement ? sourceElement : document.activeElement;
+            message.textContent = question || 'Are you sure?';
+            modal.hidden = false;
+            confirmButton.focus();
+        }
+
+        function confirmPendingAction() {
+            if (pendingRequest) {
+                const request = pendingRequest;
+                closeModal();
+                request.issueRequest(true);
+                return;
+            }
+
+            if (!pendingClickElement) {
+                closeModal();
+                return;
+            }
+
+            const element = pendingClickElement;
+            const question = element.getAttribute('hx-confirm');
+            closeModal();
+
+            if (!question) {
+                element.click();
+                return;
+            }
+
+            element.dataset.confirmBypass = '1';
+            element.removeAttribute('hx-confirm');
+            element.click();
+            window.setTimeout(function () {
+                element.setAttribute('hx-confirm', question);
+                delete element.dataset.confirmBypass;
+            }, 0);
+        }
+
+        confirmButton.addEventListener('click', confirmPendingAction);
+
+        cancelButton.addEventListener('click', closeModal);
+
+        modal.addEventListener('click', function (event) {
+            if (event.target.dataset.confirmClose === '1') {
+                closeModal();
+            }
+        });
+
+        document.addEventListener('keydown', function (event) {
+            if (event.key === 'Escape' && !modal.hidden) {
+                closeModal();
+            }
+        });
+
+        document.addEventListener('click', function (event) {
+            const sourceElement = event.target.closest('[hx-confirm]');
+            if (!sourceElement || sourceElement.dataset.confirmBypass === '1') {
+                return;
+            }
+
+            event.preventDefault();
+            event.stopPropagation();
+            openModal(sourceElement.getAttribute('hx-confirm'), sourceElement, null);
+        }, true);
+
+        document.body.addEventListener('htmx:confirm', function (event) {
+            if (!event.detail.question || event.detail.target.dataset.confirmBypass === '1') {
+                return;
+            }
+
+            event.preventDefault();
+            openModal(event.detail.question, event.detail.target, event.detail);
+        });
+    })();
+</script>
