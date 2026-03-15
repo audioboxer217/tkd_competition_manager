@@ -803,7 +803,7 @@ class TestUIMatchResult:
             )
 
         first_match = Match.query.filter_by(division_id=div_id, round_name="Round 1").first()
-        winner = Competitor.query.get(first_match.competitor1_id)
+        winner = db.session.get(Competitor, first_match.competitor1_id)
 
         resp = client.post(
             f"/ui/matches/{first_match.id}/result",
