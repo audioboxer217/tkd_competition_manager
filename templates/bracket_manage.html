@@ -157,8 +157,8 @@
                     </div>
                     {% if match.status == "Pending" %}
                     <form hx-put="/matches/{{ match.id }}/schedule" hx-target="#match-{{ match.id }}"
-                        hx-swap="outerHTML" style="display: flex; gap: 5px;">
-                        <select name="ring_id" required style="flex: 1;">
+                        hx-swap="outerHTML" style="display: flex; flex-direction: column; gap: 5px;">
+                        <select name="ring_id" required style="width: 100%;">
                             <option value="">Select Ring...</option>
                             {% for ring in rings %}
                             <option value="{{ ring.id }}" {% if ring.id==match.ring_id %}selected{% endif %}>
@@ -166,9 +166,11 @@
                             </option>
                             {% endfor %}
                         </select>
-                        <input type="number" name="ring_sequence" placeholder="Seq (e.g. 1)" value="{{ match.match_number
-                            - (match.ring_id * 100) if match.match_number else '' }}" required style="width: 80px;">
-                        <button type="submit" class="save-btn">Save</button>
+                        <div style="display: flex; gap: 5px;">
+                            <input type="number" name="ring_sequence" placeholder="Seq (e.g. 1)" value="{{ match.match_number
+                                - (match.ring_id * 100) if match.match_number else '' }}" required style="flex: 1;">
+                            <button type="submit" class="save-btn">Save</button>
+                        </div>
                     </form>
                     {% endif %}
                 </div>
