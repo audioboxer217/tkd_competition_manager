@@ -410,7 +410,8 @@ def results_view():
 
 @app.route("/ui/divisions/<int:div_id>/bracket", methods=["GET"])
 def brack(div_id):
-    return render_template("bracket_view.html", division=db.session.get(Division, div_id))
+    division = Division.query.get_or_404(div_id)
+    return render_template("bracket_view.html", division=division)
 
 
 @app.route("/divisions/<int:div_id>/bracket_ui", methods=["GET"])
@@ -449,7 +450,7 @@ def _compute_placements(matches):
         "second" – loser of the championship match
         "third"  – list of loser names from Semi-Final matches (0, 1, or 2 entries)
     """
-    completed_statuses = {"Completed", "Disqualification"}
+    completed_statuses = COMPLETED_MATCH_STATUSES
 
     # The championship match is the one with no next_match_id.
     championship = next(
@@ -554,9 +555,16 @@ def ui_results_divisions():
 
     divisions = Division.query.filter_by(event_type=event_type).order_by(Division.name).all()
 
+    # Single query for all match statuses — avoids N+1
+    division_ids = [d.id for d in divisions]
+    matches_by_division = defaultdict(list)
+    if division_ids:
+        for m in Match.query.filter(Match.division_id.in_(division_ids)).all():
+            matches_by_division[m.division_id].append(m)
+
     division_data = []
     for division in divisions:
-        matches = Match.query.filter_by(division_id=division.id).all()
+        matches = matches_by_division[division.id]
         if not matches:
             status = "No bracket"
         elif all(m.status in COMPLETED_MATCH_STATUSES for m in matches):
