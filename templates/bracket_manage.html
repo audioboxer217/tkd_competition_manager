@@ -24,7 +24,6 @@
             display: flex;
             flex-direction: row;
             align-items: stretch;
-            justify-content: center;
             gap: 40px;
             overflow-x: auto;
             padding: 20px 0;
@@ -34,11 +33,7 @@
             display: flex;
             flex-direction: column;
             justify-content: space-around;
-            width: fit-content;
-        }
-
-        .match-card, .match-card-hidden {
-            width: fit-content;
+            min-width: 320px;
         }
 
         .round-title {
@@ -134,11 +129,11 @@
         </button> -->
     </span>
     <div class="bracket-container">
-        {% for col in columns %}
+        {% for round_name, match_list in rounds.items() %}
         <div class="round-column">
-            <div class="round-title">{{ col.title }}</div>
+            <div class="round-title">{{ round_name }}</div>
 
-            {% for match in col.matches %}
+            {% for match in match_list %}
             <div class={{ "match-card" if match.status != "Completed (Bye)"
                 else "match-card-hidden" }} id="match-{{ match.id }}">
 
@@ -162,8 +157,8 @@
                     </div>
                     {% if match.status == "Pending" %}
                     <form hx-put="/matches/{{ match.id }}/schedule" hx-target="#match-{{ match.id }}"
-                        hx-swap="outerHTML" style="display: flex; flex-direction: column; gap: 5px;">
-                        <select name="ring_id" required style="width: 100%;">
+                        hx-swap="outerHTML" style="display: flex; gap: 5px;">
+                        <select name="ring_id" required style="flex: 1;">
                             <option value="">Select Ring...</option>
                             {% for ring in rings %}
                             <option value="{{ ring.id }}" {% if ring.id==match.ring_id %}selected{% endif %}>
@@ -171,11 +166,9 @@
                             </option>
                             {% endfor %}
                         </select>
-                        <div style="display: flex; gap: 5px;">
-                            <input type="number" name="ring_sequence" placeholder="Seq (e.g. 1)" value="{{ match.match_number
-                                - (match.ring_id * 100) if match.match_number else '' }}" required style="flex: 1;">
-                            <button type="submit" class="save-btn">Save</button>
-                        </div>
+                        <input type="number" name="ring_sequence" placeholder="Seq (e.g. 1)" value="{{ match.match_number
+                            - (match.ring_id * 100) if match.match_number else '' }}" required style="width: 80px;">
+                        <button type="submit" class="save-btn">Save</button>
                     </form>
                     {% endif %}
                 </div>
