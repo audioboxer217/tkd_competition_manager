@@ -505,6 +505,23 @@ def get_bracket_ui(div_id):
     return render_template("bracket_fragment.html", columns=columns, placements=placements)
 
 
+def _abbrev_round(round_name):
+    """Return a short display label for a round name.
+
+    'Final' -> 'F', 'Semi-Final' -> 'SF', 'Quarter-Final' -> 'QF',
+    'Round N' -> 'RN'.  Any unrecognised value is returned unchanged.
+    """
+    if round_name == "Final":
+        return "F"
+    if round_name == "Semi-Final":
+        return "SF"
+    if round_name == "Quarter-Final":
+        return "QF"
+    if round_name and round_name.startswith("Round "):
+        return "R" + round_name[6:]
+    return round_name
+
+
 def _compute_placements(matches):
     """Return medal placements dict when the championship match is complete, else None.
 
@@ -598,6 +615,7 @@ def ui_public_rings():
                 "W" if last_completed.winner_id == last_completed.competitor2_id
                 else ("L" if last_completed.winner_id else "-")
             )
+            last_completed.round_short = _abbrev_round(last_completed.round_name)
 
         matches = (
             Match.query.filter(
@@ -617,6 +635,7 @@ def ui_public_rings():
             match.comp_2 = (
                 f"{match.competitor2.name.split()[0][0]}. {match.competitor2.name.split()[-1]}" if match.competitor2 else "TBD"
             )
+            match.round_short = _abbrev_round(match.round_name)
 
         ring_data.append({"name": ring.name, "last_completed": last_completed, "matches": matches})
 
@@ -625,7 +644,7 @@ def ui_public_rings():
     <div class="ring-card">
         <h2>{{ ring.name }}</h2>
         {% if ring.last_completed %}
-            <strong>{{ ring.last_completed.match_number }}</strong> - <a href="/ui/divisions/{{ ring.last_completed.division.id }}/bracket">{{ ring.last_completed.division.name }}</a> ({{ ring.last_completed.round_name }})
+            <strong>{{ ring.last_completed.match_number }}</strong> - <a href="/ui/divisions/{{ ring.last_completed.division.id }}/bracket">{{ ring.last_completed.division.name }}</a> ({{ ring.last_completed.round_short }})
             <div class="match-item match-item-completed">
                 <span>
                     <font style="color: #252ceb; font-weight: bold;">{{ ring.last_completed.comp_1 }}</font>
@@ -643,7 +662,7 @@ def ui_public_rings():
             {% endif %}
         {% else %}
             {% for match in ring.matches %}
-            <strong>{{ match.match_number }}</strong> - <a href="/ui/divisions/{{ match.division.id }}/bracket">{{ match.division.name }}</a> ({{ match.round_name }})
+            <strong>{{ match.match_number }}</strong> - <a href="/ui/divisions/{{ match.division.id }}/bracket">{{ match.division.name }}</a> ({{ match.round_short }})
             <div class="match-item">
                 <span><font style="color: #252ceb; font-weight: bold;">{{ match.comp_1 }}</font> vs <font style="color: #eb2525; font-weight: bold;">{{ match.comp_2 }}</font></span>
                 <span class="{% if match.status == 'In Progress' %}status-in-progress{% else %}status-pending{% endif %}">

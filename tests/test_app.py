@@ -4,7 +4,7 @@ import re
 
 import pytest
 
-from app import Competitor, Division, Match, Ring, db
+from app import Competitor, Division, Match, Ring, _abbrev_round, db
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -29,6 +29,34 @@ def _add_competitors(client, div_id, names):
 
 def _generate_bracket(client, div_id):
     return client.post(f"/divisions/{div_id}/generate_bracket")
+
+
+# ---------------------------------------------------------------------------
+# _abbrev_round unit tests
+# ---------------------------------------------------------------------------
+
+
+class TestAbbrevRound:
+    def test_final(self):
+        assert _abbrev_round("Final") == "F"
+
+    def test_semi_final(self):
+        assert _abbrev_round("Semi-Final") == "SF"
+
+    def test_quarter_final(self):
+        assert _abbrev_round("Quarter-Final") == "QF"
+
+    def test_round_1(self):
+        assert _abbrev_round("Round 1") == "R1"
+
+    def test_round_2(self):
+        assert _abbrev_round("Round 2") == "R2"
+
+    def test_unknown_passthrough(self):
+        assert _abbrev_round("Mystery Round") == "Mystery Round"
+
+    def test_none_passthrough(self):
+        assert _abbrev_round(None) is None
 
 
 # ---------------------------------------------------------------------------
@@ -531,6 +559,44 @@ class TestUIRings:
         assert "D. Brown" in body
         assert "A. Smith" not in body
         assert "B. Jones" not in body
+
+    def test_ui_public_rings_round_name_abbreviated(self, client):
+        """Round names are shown as short codes: R1, QF, SF, F."""
+        ring = Ring(name="Ring 1")
+        division = Division(name="Test Division", event_type="kyorugi")
+        db.session.add_all([ring, division])
+        db.session.flush()
+
+        comps = [Competitor(name=f"Fighter {i}", division_id=division.id) for i in range(1, 9)]
+        db.session.add_all(comps)
+        db.session.flush()
+
+        rounds = [
+            ("Round 1", comps[0], comps[1], 200),
+            ("Quarter-Final", comps[2], comps[3], 201),
+            ("Semi-Final", comps[4], comps[5], 202),
+            ("Final", comps[6], comps[7], 203),
+        ]
+        for rname, c1, c2, mnum in rounds:
+            db.session.add(Match(
+                ring_id=ring.id, division_id=division.id,
+                competitor1_id=c1.id, competitor2_id=c2.id,
+                status="Pending", match_number=mnum, round_name=rname,
+            ))
+        db.session.commit()
+
+        resp = client.get("/ui/public_rings")
+        assert resp.status_code == 200
+        body = resp.data.decode()
+
+        assert "(R1)" in body
+        assert "(QF)" in body
+        assert "(SF)" in body
+        assert "(F)" in body
+        assert "Round 1" not in body
+        assert "Quarter-Final" not in body
+        assert "Semi-Final" not in body
+        assert "Final" not in body
 
 
 # ---------------------------------------------------------------------------
