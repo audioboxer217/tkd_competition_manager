@@ -215,6 +215,18 @@ def _scorekeeper_match_card_html(match):
     return render_template("scorekeeper_match_card.html", match=match)
 
 
+def _get_round_name(num_matches):
+    """Return the standard tournament round name for a round with *num_matches* matches."""
+    if num_matches == 1:
+        return "Final"
+    elif num_matches == 2:
+        return "Semi-Final"
+    elif num_matches == 4:
+        return "Quarter-Final"
+    else:
+        return f"Round of {num_matches * 2}"
+
+
 @app.route("/divisions/<int:div_id>/generate_bracket", methods=["POST"])
 @login_required
 def generate_bracket(div_id):
@@ -244,7 +256,8 @@ def generate_bracket(div_id):
         match_index = i % num_first_round_matches
         match_pairings[match_index][slot] = competitor
 
-    # 3. Create Round 1 Matches
+    # 3. Create first-round matches, named by bracket size (e.g. "Quarter-Final", "Round of 16")
+    first_round_name = _get_round_name(num_first_round_matches)
     current_round_matches = []
     for pair in match_pairings:
         comp1, comp2 = pair[0], pair[1]
@@ -253,7 +266,7 @@ def generate_bracket(div_id):
             division_id=div_id,
             competitor1_id=comp1.id if comp1 else None,
             competitor2_id=comp2.id if comp2 else None,
-            round_name="Round 1",
+            round_name=first_round_name,
         )
 
         # Auto-advance if it's a bye
@@ -271,7 +284,6 @@ def generate_bracket(div_id):
     db.session.flush()
 
     # 4. Build Subsequent Rounds (Bottom-Up to the Final)
-    round_num = 2
     while len(current_round_matches) > 1:
         next_round_matches = []
 
@@ -280,15 +292,8 @@ def generate_bracket(div_id):
             prev_match1 = current_round_matches[i]
             prev_match2 = current_round_matches[i + 1]
 
-            # Determine round naming
-            if len(current_round_matches) == 2:
-                r_name = "Final"
-            elif len(current_round_matches) == 4:
-                r_name = "Semi-Final"
-            elif len(current_round_matches) == 8:
-                r_name = "Quarter-Final"
-            else:
-                r_name = f"Round {round_num}"
+            # Determine round naming based on number of matches being created
+            r_name = _get_round_name(len(current_round_matches) // 2)
 
             new_match = Match(division_id=div_id, round_name=r_name)
             db.session.add(new_match)
@@ -307,7 +312,6 @@ def generate_bracket(div_id):
             next_round_matches.append(new_match)
 
         current_round_matches = next_round_matches
-        round_num += 1
 
     # Commit everything to the database
     db.session.commit()
@@ -428,8 +432,8 @@ def get_bracket_ui(div_id):
         match.competitor2_name = db.session.get(Competitor, match.competitor2_id).name if match.competitor2_id else "TBD"
         grouped_matches[match.round_name].append(match)
 
-    # Optional: Sort the dictionary so "Round 1" comes before "Quarter-Final", etc.
-    # For a real app, you might use a round_number integer to sort easily.
+    # Matches are queried in creation order, which matches bracket round order,
+    # so grouped_matches preserves the correct display sequence.
 
     # Compute medal placements when the Final match is complete
     placements = _compute_placements(matches)
@@ -441,9 +445,8 @@ def _compute_placements(matches):
     """Return medal placements dict when the championship match is complete, else None.
 
     The championship match is identified as the one with no ``next_match_id``
-    (the root of the bracket tree).  For standard bracket sizes this is the
-    match whose ``round_name`` is ``"Final"``, but for 2-competitor divisions
-    it will be the single ``"Round 1"`` match.
+    (the root of the bracket tree).  For all bracket sizes this is the match
+    whose ``round_name`` is ``"Final"``.
 
     Returns a dict with keys:
         "first"  – winner of the championship match (Competitor name string)
@@ -471,8 +474,7 @@ def _compute_placements(matches):
     semi_losers = []
     # Semifinal matches are those that feed directly into the championship match.
     # Using the bracket structure (next_match_id) rather than round_name ensures
-    # we correctly identify semifinals even when they are labeled "Round 1" in
-    # small brackets (e.g., 4-competitor divisions).
+    # we correctly identify semifinals for all bracket sizes.
     for m in matches:
         if m.next_match_id == championship.id and m.status in completed_statuses and m.winner_id:
             sf_loser_id = (
