@@ -863,6 +863,8 @@ class TestPageRoutes:
         div_id = _create_division(client).get_json()["id"]
         resp = client.get(f"/admin/divisions/{div_id}/setup")
         assert resp.status_code == 200
+        assert b'id="htmx-confirm-modal"' in resp.data
+        assert b"htmx:confirm" in resp.data
 
     def test_admin_division_setup_not_found(self, client):
         resp = client.get("/admin/divisions/9999/setup")
@@ -919,6 +921,8 @@ class TestPageRoutes:
 
         resp = client.get(f"/admin/divisions/{div_id}/bracket_manage")
         assert resp.status_code == 200
+        assert b'id="htmx-confirm-modal"' in resp.data
+        assert b"htmx:confirm" in resp.data
 
     def test_bracket_manage_not_found(self, client):
         resp = client.get("/admin/divisions/9999/bracket_manage")
@@ -1037,6 +1041,8 @@ class TestEventTypes:
         ring_id = _create_ring(client, "Ring 1").get_json()["id"]
         resp = client.get(f"/ring/{ring_id}/scorekeeper")
         assert resp.status_code == 200
+        assert b'id="htmx-confirm-modal"' in resp.data
+        assert b"htmx:confirm" in resp.data
 
     def test_ring_scorekeeper_not_found(self, client):
         resp = client.get("/ring/9999/scorekeeper")
