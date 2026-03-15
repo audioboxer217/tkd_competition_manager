@@ -178,6 +178,21 @@
             border-radius: 8px;
         }
 
+        @keyframes resultNotificationFade {
+            0%, 93.75% { opacity: 1; }
+            100% { opacity: 0; }
+        }
+
+        .result-notification-content {
+            padding: 20px;
+            background: #d1fae5;
+            color: #065f46;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            border: 1px solid #34d399;
+            animation: resultNotificationFade 16s forwards;
+        }
+
         a.back-link {
             color: #64748b;
             text-decoration: none;
@@ -202,18 +217,9 @@
         <a href="/ring/{{ ring.id }}/scorekeeper?event_type=poomsae"
             class="event-tab {{ 'active' if event_type == 'poomsae' else '' }}">Poomsae</a>
     </div>
+    <div id="result-notification"></div>
     <div id="matches-container">
-        {% if not matches %}
-        <div class="empty-state">
-            No ready matches currently assigned to this ring.<br>
-            <button onclick="location.reload()" style="margin-top: 15px; padding: 10px 20px; font-size: 1rem;">Refresh
-                Queue</button>
-        </div>
-        {% else %}
-        {% for match in matches %}
-        {% include 'scorekeeper_match_card.html' %}
-        {% endfor %}
-        {% endif %}
+        {% include 'scorekeeper_matches_fragment.html' %}
     </div>
 
     {% include '_confirm_modal.html' %}
@@ -257,6 +263,13 @@
 
         document.body.addEventListener('htmx:afterSwap', function (event) {
             initScorekeeperForms(event.target);
+        });
+
+        document.body.addEventListener('htmx:afterSettle', function () {
+            var container = document.getElementById('matches-container');
+            if (container) {
+                initScorekeeperForms(container);
+            }
         });
     </script>
 
