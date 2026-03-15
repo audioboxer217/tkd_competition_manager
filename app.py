@@ -62,6 +62,7 @@ class Ring(db.Model):
 
 
 VALID_EVENT_TYPES = {"poomsae", "kyorugi"}
+COMPLETED_MATCH_STATUSES = {"Completed", "Completed (Bye)", "Disqualification"}
 
 
 class Division(db.Model):
@@ -402,6 +403,11 @@ def admin_view():
     return render_template("admin.html")
 
 
+@app.route("/results")
+def results_view():
+    return render_template("results.html")
+
+
 @app.route("/ui/divisions/<int:div_id>/bracket", methods=["GET"])
 def brack(div_id):
     return render_template("bracket_view.html", division=db.session.get(Division, div_id))
@@ -537,6 +543,45 @@ def ui_public_rings():
     {% endfor %}
     """
     return render_template_string(html, rings=ring_data)
+
+
+# 2. Results Divisions Fragment
+@app.route("/ui/results_divisions")
+def ui_results_divisions():
+    event_type = request.args.get("event_type", "kyorugi")
+    if event_type not in VALID_EVENT_TYPES:
+        return "Invalid event type.", 400
+
+    divisions = Division.query.filter_by(event_type=event_type).order_by(Division.name).all()
+
+    division_data = []
+    for division in divisions:
+        matches = Match.query.filter_by(division_id=division.id).all()
+        if not matches:
+            status = "No bracket"
+        elif all(m.status in COMPLETED_MATCH_STATUSES for m in matches):
+            status = "Completed"
+        elif any(m.status in COMPLETED_MATCH_STATUSES or m.status == "In Progress" for m in matches):
+            status = "In Progress"
+        else:
+            status = "Pending"
+        division_data.append({"division": division, "status": status})
+
+    html = """
+    {% if divisions %}
+    <div class="divisions-list">
+        {% for item in divisions %}
+        <a href="/ui/divisions/{{ item.division.id }}/bracket" class="division-btn">
+            <div class="division-name">{{ item.division.name }}</div>
+            <div class="division-meta">{{ item.status }}</div>
+        </a>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">No divisions found for this event type.</div>
+    {% endif %}
+    """
+    return render_template_string(html, divisions=division_data)
 
 
 # --- RING ROUTES ---
