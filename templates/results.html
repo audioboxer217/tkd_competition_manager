@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Tournament Results</title>
+    <script src="https://unpkg.com/htmx.org@1.9.6"></script>
+    <style>
+        body {
+            font-family: system-ui, sans-serif;
+            background: #f8fafc;
+            margin: 0;
+            padding: 20px;
+            position: relative;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            color: #0f172a;
+        }
+
+        .event-tabs {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            margin-bottom: 20px;
+        }
+
+        .tab-btn {
+            background: #e2e8f0;
+            color: #475569;
+            border: 1px solid #cbd5e1;
+            padding: 6px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+
+        .tab-btn:hover {
+            background: #cbd5e1;
+        }
+
+        .tab-btn.active {
+            background: #2563eb;
+            color: white;
+            border-color: #2563eb;
+        }
+
+        .tab-btn.active:hover {
+            background: #1d4ed8;
+        }
+
+        .divisions-list {
+            max-width: 700px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .division-btn {
+            display: block;
+            width: 100%;
+            background: white;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 16px 20px;
+            text-align: left;
+            cursor: pointer;
+            font-size: 1rem;
+            color: #0f172a;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
+            text-decoration: none;
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+
+        .division-btn:hover {
+            border-color: #2563eb;
+            box-shadow: 0 4px 10px rgba(37, 99, 235, 0.1);
+            color: #2563eb;
+        }
+
+        .division-btn .division-name {
+            font-weight: 600;
+            font-size: 1rem;
+        }
+
+        .division-btn .division-meta {
+            font-size: 0.82rem;
+            color: #64748b;
+            margin-top: 4px;
+        }
+
+        .empty-state {
+            text-align: center;
+            color: #94a3b8;
+            padding: 40px 0;
+            font-size: 1rem;
+        }
+
+        .btn-back {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            display: inline-block;
+            background: #e2e8f0;
+            color: #475569;
+            padding: 5px 12px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            text-decoration: none;
+            border: 1px solid #cbd5e1;
+        }
+
+        .btn-back:hover {
+            background: #cbd5e1;
+            color: #0f172a;
+        }
+    </style>
+</head>
+
+<body>
+
+    <a href="/" class="btn-back">&larr; Live View</a>
+
+    <div class="header">
+        <h1>Tournament Results</h1>
+        <p>Select a division to view its bracket and placements.</p>
+    </div>
+
+    <div class="event-tabs">
+        <button id="tab-kyorugi" class="tab-btn active" type="button" onclick="switchResultsEvent('kyorugi')">Kyorugi</button>
+        <button id="tab-poomsae" class="tab-btn" type="button" onclick="switchResultsEvent('poomsae')">Poomsae</button>
+    </div>
+
+    <div id="divisions-container"
+         hx-get="/ui/results_divisions?event_type=kyorugi"
+         hx-trigger="load"
+         hx-swap="innerHTML">
+        <div class="empty-state">Loading divisions...</div>
+    </div>
+
+    <script>
+        const RESULTS_EVENT_STORAGE_KEY = 'resultsViewEventType';
+        const VALID_EVENT_TYPES = ['kyorugi', 'poomsae'];
+
+        function getCurrentResultsEvent() {
+            const activeTab = document.querySelector('.tab-btn.active');
+            return activeTab ? activeTab.id.replace('tab-', '') : 'kyorugi';
+        }
+
+        function applyResultsEvent(eventType) {
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById('tab-' + eventType).classList.add('active');
+            const container = document.getElementById('divisions-container');
+            container.setAttribute('hx-get', '/ui/results_divisions?event_type=' + eventType);
+        }
+
+        function switchResultsEvent(eventType) {
+            if (!VALID_EVENT_TYPES.includes(eventType)) {
+                return;
+            }
+            localStorage.setItem(RESULTS_EVENT_STORAGE_KEY, eventType);
+            applyResultsEvent(eventType);
+            htmx.ajax('GET', '/ui/results_divisions?event_type=' + eventType, {
+                target: '#divisions-container',
+                swap: 'innerHTML'
+            });
+        }
+
+        (function initializeResultsEventTab() {
+            const saved = localStorage.getItem(RESULTS_EVENT_STORAGE_KEY);
+            const initial = VALID_EVENT_TYPES.includes(saved) ? saved : 'kyorugi';
+            applyResultsEvent(initial);
+        })();
+    </script>
+
+</body>
+
+</html>
