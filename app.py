@@ -500,9 +500,39 @@ def ui_public_rings():
         return "Invalid event type.", 400
 
     rings = Ring.query.all()
+    completed_statuses = ["Completed", "Completed (Bye)", "Disqualification"]
     # Find active/upcoming matches for each ring
     ring_data = []
     for ring in rings:
+        # Fetch the most recently completed match (by match_number) for this ring
+        last_completed = (
+            Match.query.filter(
+                Match.ring_id == ring.id,
+                Match.division.has(event_type=event_type),
+                Match.status.in_(completed_statuses),
+                Match.match_number.isnot(None),
+            )
+            .order_by(Match.match_number.desc())
+            .first()
+        )
+        if last_completed:
+            last_completed.comp_1 = (
+                f"{last_completed.competitor1.name.split()[0][0]}. {last_completed.competitor1.name.split()[-1]}"
+                if last_completed.competitor1 else "TBD"
+            )
+            last_completed.comp_2 = (
+                f"{last_completed.competitor2.name.split()[0][0]}. {last_completed.competitor2.name.split()[-1]}"
+                if last_completed.competitor2 else "TBD"
+            )
+            last_completed.comp_1_result = (
+                "W" if last_completed.winner_id == last_completed.competitor1_id
+                else ("L" if last_completed.winner_id else "-")
+            )
+            last_completed.comp_2_result = (
+                "W" if last_completed.winner_id == last_completed.competitor2_id
+                else ("L" if last_completed.winner_id else "-")
+            )
+
         matches = (
             Match.query.filter(
                 Match.ring_id == ring.id,
@@ -511,6 +541,7 @@ def ui_public_rings():
                 Match.match_number.isnot(None),
             )
             .order_by(case((Match.status == "In Progress", 0), else_=1), Match.match_number)
+            .limit(4)
             .all()
         )
         for match in matches:
@@ -521,14 +552,29 @@ def ui_public_rings():
                 f"{match.competitor2.name.split()[0][0]}. {match.competitor2.name.split()[-1]}" if match.competitor2 else "TBD"
             )
 
-        ring_data.append({"name": ring.name, "matches": matches})
+        ring_data.append({"name": ring.name, "last_completed": last_completed, "matches": matches})
 
     html = """
     {% for ring in rings %}
     <div class="ring-card">
         <h2>{{ ring.name }}</h2>
+        {% if ring.last_completed %}
+            <strong>{{ ring.last_completed.match_number }}</strong> - <a href="/ui/divisions/{{ ring.last_completed.division.id }}/bracket">{{ ring.last_completed.division.name }}</a> ({{ ring.last_completed.round_name }})
+            <div class="match-item match-item-completed">
+                <span>
+                    <font style="color: #252ceb; font-weight: bold;">{{ ring.last_completed.comp_1 }}</font>
+                    <span class="result-indicator {% if ring.last_completed.comp_1_result == 'W' %}result-win{% elif ring.last_completed.comp_1_result == 'L' %}result-loss{% else %}result-neutral{% endif %}">{{ ring.last_completed.comp_1_result }}</span>
+                    vs
+                    <font style="color: #eb2525; font-weight: bold;">{{ ring.last_completed.comp_2 }}</font>
+                    <span class="result-indicator {% if ring.last_completed.comp_2_result == 'W' %}result-win{% elif ring.last_completed.comp_2_result == 'L' %}result-loss{% else %}result-neutral{% endif %}">{{ ring.last_completed.comp_2_result }}</span>
+                </span>
+                <span class="status-completed">{{ ring.last_completed.status }}</span>
+            </div>
+        {% endif %}
         {% if not ring.matches %}
-            <p style="color: #94a3b8;">No upcoming matches.</p>
+            {% if not ring.last_completed %}
+                <p style="color: #94a3b8;">No upcoming matches.</p>
+            {% endif %}
         {% else %}
             {% for match in ring.matches %}
             <strong>{{ match.match_number }}</strong> - <a href="/ui/divisions/{{ match.division.id }}/bracket">{{ match.division.name }}</a> ({{ match.round_name }})
