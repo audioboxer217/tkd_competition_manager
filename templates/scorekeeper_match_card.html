@@ -4,8 +4,7 @@
         <strong>Match {{ match.match_number if match.match_number is not none else "Unassigned" }}</strong> &mdash; {{ match.division.name }} ({{ match.round_name }})
     </div>
 
-    <form class="scorekeeper-form" data-has-tbd="{{ 1 if has_tbd else 0 }}" hx-post="/ui/matches/{{ match.id }}/result"
-        hx-target="#match-{{ match.id }}" hx-swap="outerHTML">
+    <form class="scorekeeper-form" data-has-tbd="{{ 1 if has_tbd else 0 }}">
 
         <div class="competitor-select">
             <div class="competitor-option">
@@ -29,20 +28,24 @@
 
         <div class="controls">
             {% if match.status == "In Progress" %}
-            <button type="submit" name="status" value="Completed" class="submit-btn winner-required" disabled {{ 'data-force-disabled="1"' if has_tbd else "" }}>
+            <button type="button" class="submit-btn winner-required" disabled {{ 'data-force-disabled="1"' if has_tbd else "" }}
+                hx-post="/ui/matches/{{ match.id }}/result" hx-target="#match-{{ match.id }}" hx-swap="outerHTML"
+                hx-include="closest form" hx-vals='{"status": "Completed"}'
+                hx-confirm="Confirm official result (Normal Win) for Match {{ match.match_number }}? This will advance the bracket.">
                 Normal Win
             </button>
-            <button type="submit" name="status" value="Disqualification" class="submit-btn dsq-btn winner-required" disabled {{ 'data-force-disabled="1"' if has_tbd else "" }}>
-                Disqualification
-            </button>
             {% else %}
-            <button type="submit" name="status" value="In Progress" class="submit-btn" {{ "disabled" if has_tbd else "" }}>
+            <button type="button" class="submit-btn" {{ "disabled" if has_tbd else "" }} hx-post="/ui/matches/{{ match.id }}/result"
+                hx-target="#match-{{ match.id }}" hx-swap="outerHTML" hx-include="closest form" hx-vals='{"status": "In Progress"}'>
                 Start
             </button>
-            <button type="submit" name="status" value="Disqualification" class="submit-btn dsq-btn winner-required" disabled {{ 'data-force-disabled="1"' if has_tbd else "" }}>
+            {% endif %}
+            <button type="button" class="submit-btn dsq-btn winner-required" disabled {{ 'data-force-disabled="1"' if has_tbd
+                else "" }} hx-post="/ui/matches/{{ match.id }}/result" hx-target="#match-{{ match.id }}" hx-swap="outerHTML"
+                hx-include="closest form" hx-vals='{"status": "Disqualification"}'
+                hx-confirm="Confirm official result (Disqualification) for Match {{ match.match_number }}? This will advance the bracket.">
                 Disqualification
             </button>
-            {% endif %}
         </div>
     </form>
 </div>
