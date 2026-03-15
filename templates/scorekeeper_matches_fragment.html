@@ -1,0 +1,11 @@
+{% if not matches %}
+<div class="empty-state">
+    No ready matches currently assigned to this ring.<br>
+    <button onclick="location.reload()" style="margin-top: 15px; padding: 10px 20px; font-size: 1rem;">Refresh
+        Queue</button>
+</div>
+{% else %}
+{% for match in matches %}
+{% include 'scorekeeper_match_card.html' %}
+{% endfor %}
+{% endif %}

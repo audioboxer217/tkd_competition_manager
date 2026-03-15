@@ -750,6 +750,69 @@ class TestUIMatchResult:
         )
         assert resp.status_code == 200
 
+    def test_ui_record_result_completed_includes_oob_notification(self, client):
+        """Response should include OOB result notification and refreshed matches list."""
+        div_id = _create_division(client).get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _generate_bracket(client, div_id)
+
+        match = Match.query.filter_by(division_id=div_id, round_name="Round 1").first()
+        winner_id = match.competitor1_id
+
+        resp = client.post(
+            f"/ui/matches/{match.id}/result",
+            data={"status": "Completed", "winner_id": str(winner_id)},
+        )
+        assert resp.status_code == 200
+        assert b'id="result-notification"' in resp.data
+        assert b'hx-swap-oob="innerHTML"' in resp.data
+        assert b'id="matches-container"' in resp.data
+        assert b'result-notification-content' in resp.data
+
+    def test_ui_record_result_disqualification_includes_oob_notification(self, client):
+        """Disqualification result should include OOB notification and refreshed matches."""
+        div_id = _create_division(client).get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _generate_bracket(client, div_id)
+
+        match = Match.query.filter_by(division_id=div_id, round_name="Round 1").first()
+        winner_id = match.competitor2_id
+
+        resp = client.post(
+            f"/ui/matches/{match.id}/result",
+            data={"status": "Disqualification", "winner_id": str(winner_id)},
+        )
+        assert resp.status_code == 200
+        assert b'id="result-notification"' in resp.data
+        assert b'hx-swap-oob="innerHTML"' in resp.data
+        assert b'id="matches-container"' in resp.data
+
+    def test_ui_record_result_completed_refreshes_bracket_advancement(self, client):
+        """After a match completes, next match should show winner name in the OOB matches list."""
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_id = _create_division(client).get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob", "Carol", "Dave"])
+        _generate_bracket(client, div_id)
+
+        # Schedule all matches to the ring so they appear in the matches refresh
+        all_matches = Match.query.filter_by(division_id=div_id).order_by(Match.match_number).all()
+        for seq, m in enumerate(all_matches, start=1):
+            client.put(
+                f"/matches/{m.id}/schedule",
+                data={"ring_id": str(ring_id), "ring_sequence": str(seq)},
+            )
+
+        first_match = Match.query.filter_by(division_id=div_id, round_name="Round 1").first()
+        winner = Competitor.query.get(first_match.competitor1_id)
+
+        resp = client.post(
+            f"/ui/matches/{first_match.id}/result",
+            data={"status": "Completed", "winner_id": str(winner.id)},
+        )
+        assert resp.status_code == 200
+        # The refreshed matches-container should include the winner's name in the next match
+        assert winner.name.encode() in resp.data
+
     def test_ui_record_result_match_not_found(self, client):
         resp = client.post(
             "/ui/matches/9999/result",

@@ -957,13 +957,40 @@ def ui_record_result(match_id):
 
         winner = db.session.get(Competitor, match.winner_id)
 
-        # Return a success message that replaces the match card
-        return f"""
-        <div style="padding: 20px; background: #d1fae5; color: #065f46; border-radius: 8px; margin-bottom: 15px; border: 1px solid #34d399;">
-            <h3 style="margin-top: 0;">Match {match.match_number} Complete</h3>
-            <p><strong>{winner.name}</strong> advances to the next round!</p>
-        </div>
-        """
+        # Get remaining matches for this ring to refresh the matches list
+        remaining_matches = []
+        if match.ring_id is not None:
+            remaining_matches = (
+                Match.query.filter(
+                    Match.ring_id == match.ring_id,
+                    Match.division.has(event_type=match.division.event_type),
+                    Match.status.in_(["Pending", "In Progress"]),
+                )
+                .order_by(Match.match_number)
+                .all()
+            )
+
+        matches_html = render_template(
+            "scorekeeper_matches_fragment.html", matches=remaining_matches
+        )
+
+        winner_name = escape(winner.name)
+        match_number = match.match_number
+
+        notification_html = (
+            f'<div class="result-notification-content">'
+            f'<h3 style="margin-top: 0;">Match {match_number} Complete</h3>'
+            f'<p><strong>{winner_name}</strong> advances to the next round!</p>'
+            f'</div>'
+        )
+
+        # Return main swap (removes match card) + OOB swaps for notification and
+        # refreshed matches list so other cards reflect any bracket advancement
+        return (
+            f'<!-- match {match_number} completed -->'
+            f'<div id="result-notification" hx-swap-oob="innerHTML">{notification_html}</div>'
+            f'<div id="matches-container" hx-swap-oob="innerHTML">{matches_html}</div>'
+        )
 
 
 # Initialize DB for testing
