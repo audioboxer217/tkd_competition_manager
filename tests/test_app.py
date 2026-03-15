@@ -1525,3 +1525,81 @@ class TestMedalPlacements:
         assert final_loser.name.encode() in resp.data
         for loser_name in sf_loser_names:
             assert loser_name.encode() in resp.data
+
+
+# ---------------------------------------------------------------------------
+# Symmetric Bracket Display
+# ---------------------------------------------------------------------------
+
+
+class TestBracketDisplayLayout:
+    """Tests for _build_bracket_display and _extract_bracket_half helpers."""
+
+    def test_bracket_ui_two_competitors_single_center_column(self, client):
+        """2-competitor bracket: just a Final column, no left/right columns."""
+        div_id = _create_division(client).get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _generate_bracket(client, div_id)
+
+        resp = client.get(f"/divisions/{div_id}/bracket_ui")
+        assert resp.status_code == 200
+        html = resp.data.decode()
+        titles = re.findall(r'<h3 class="round-title">([^<]+)</h3>', html)
+        assert titles == ["Final"]
+
+    def test_bracket_ui_four_competitors_three_columns(self, client):
+        """4-competitor bracket: Semi-Final | Final | Semi-Final (3 columns)."""
+        div_id = _create_division(client).get_json()["id"]
+        _add_competitors(client, div_id, ["A", "B", "C", "D"])
+        _generate_bracket(client, div_id)
+
+        resp = client.get(f"/divisions/{div_id}/bracket_ui")
+        assert resp.status_code == 200
+        html = resp.data.decode()
+        titles = re.findall(r'<h3 class="round-title">([^<]+)</h3>', html)
+        assert titles == ["Semi-Final", "Final", "Semi-Final"]
+
+    def test_bracket_ui_eight_competitors_five_columns(self, client):
+        """8-competitor bracket: Quarter-Final | Semi-Final | Final | Semi-Final | Quarter-Final."""
+        div_id = _create_division(client).get_json()["id"]
+        _add_competitors(client, div_id, ["A", "B", "C", "D", "E", "F", "G", "H"])
+        _generate_bracket(client, div_id)
+
+        resp = client.get(f"/divisions/{div_id}/bracket_ui")
+        assert resp.status_code == 200
+        html = resp.data.decode()
+        titles = re.findall(r'<h3 class="round-title">([^<]+)</h3>', html)
+        assert titles == ["Quarter-Final", "Semi-Final", "Final", "Semi-Final", "Quarter-Final"]
+
+    def test_bracket_ui_sixteen_competitors_seven_columns(self, client):
+        """16-competitor bracket has 7 columns: Round of 16 | QF | SF | F | SF | QF | Round of 16."""
+        div_id = _create_division(client).get_json()["id"]
+        _add_competitors(client, div_id, [str(i) for i in range(1, 17)])
+        _generate_bracket(client, div_id)
+
+        resp = client.get(f"/divisions/{div_id}/bracket_ui")
+        assert resp.status_code == 200
+        html = resp.data.decode()
+        titles = re.findall(r'<h3 class="round-title">([^<]+)</h3>', html)
+        assert titles == [
+            "Round of 16", "Quarter-Final", "Semi-Final",
+            "Final",
+            "Semi-Final", "Quarter-Final", "Round of 16",
+        ]
+
+    def test_bracket_ui_columns_are_symmetric(self, client):
+        """Left and right halves should be mirror images (same round names)."""
+        div_id = _create_division(client).get_json()["id"]
+        _add_competitors(client, div_id, ["A", "B", "C", "D", "E", "F", "G", "H"])
+        _generate_bracket(client, div_id)
+
+        resp = client.get(f"/divisions/{div_id}/bracket_ui")
+        assert resp.status_code == 200
+        html = resp.data.decode()
+        titles = re.findall(r'<h3 class="round-title">([^<]+)</h3>', html)
+        # Remove the center Final column; the remaining columns should be a palindrome
+        assert titles[0] == titles[-1]
+        final_idx = titles.index("Final")
+        left = titles[:final_idx]
+        right = titles[final_idx + 1:]
+        assert left == list(reversed(right))
