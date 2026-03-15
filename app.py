@@ -567,21 +567,7 @@ def ui_results_divisions():
             status = "Pending"
         division_data.append({"division": division, "status": status})
 
-    html = """
-    {% if divisions %}
-    <div class="divisions-list">
-        {% for item in divisions %}
-        <a href="/ui/divisions/{{ item.division.id }}/bracket" class="division-btn">
-            <div class="division-name">{{ item.division.name }}</div>
-            <div class="division-meta">{{ item.status }}</div>
-        </a>
-        {% endfor %}
-    </div>
-    {% else %}
-    <div class="empty-state">No divisions found for this event type.</div>
-    {% endif %}
-    """
-    return render_template_string(html, divisions=division_data)
+    return render_template("results_divisions_fragment.html", divisions=division_data)
 
 
 # --- RING ROUTES ---
