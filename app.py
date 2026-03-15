@@ -418,6 +418,68 @@ def brack(div_id):
     return render_template("bracket_view.html", division=division)
 
 
+def _extract_bracket_half(root_match, all_matches):
+    """Extract match columns for one half of the bracket starting from *root_match*.
+
+    Returns a list of lists ``[[root], [root's feeders], [their feeders], ...]``,
+    i.e. innermost round first, outermost round last.
+    """
+    columns = [[root_match]]
+    current_level = [root_match]
+    while True:
+        current_ids = {m.id for m in current_level}
+        next_level = [m for m in all_matches if m.next_match_id in current_ids]
+        if not next_level:
+            break
+        columns.append(next_level)
+        current_level = next_level
+    return columns
+
+
+def _build_bracket_display(matches):
+    """Build an ordered list of columns for a symmetric bracket display.
+
+    The bracket is split into two halves that mirror each other around the Final:
+
+        [left outermost] … [left innermost] [Final] [right innermost] … [right outermost]
+
+    Each column is a ``dict`` with keys ``"title"`` (round name) and ``"matches"``
+    (list of Match objects).  Returns the columns in left-to-right display order.
+    """
+    if not matches:
+        return []
+
+    # Championship match = the one with no next_match_id
+    final = next((m for m in matches if m.next_match_id is None), None)
+    if final is None:
+        return []
+
+    # Direct feeders into the Final
+    feeders = sorted([m for m in matches if m.next_match_id == final.id], key=lambda m: m.id)
+
+    columns = []
+
+    if len(feeders) >= 2:
+        left_root, right_root = feeders[0], feeders[1]
+
+        # Left half: innermost→outermost; reverse so outermost is displayed first (leftmost)
+        left_half = _extract_bracket_half(left_root, matches)
+        left_half.reverse()
+        for col_matches in left_half:
+            columns.append({"title": col_matches[0].round_name, "matches": col_matches})
+
+    # Center – the Final
+    columns.append({"title": "Final", "matches": [final]})
+
+    if len(feeders) >= 2:
+        # Right half: innermost→outermost; display innermost first (closest to center)
+        right_half = _extract_bracket_half(right_root, matches)
+        for col_matches in right_half:
+            columns.append({"title": col_matches[0].round_name, "matches": col_matches})
+
+    return columns
+
+
 @app.route("/divisions/<int:div_id>/bracket_ui", methods=["GET"])
 def get_bracket_ui(div_id):
     matches = Match.query.filter_by(division_id=div_id).all()
@@ -425,20 +487,18 @@ def get_bracket_ui(div_id):
     if not matches:
         return "<p>No bracket generated yet.</p>", 404
 
-    # Group matches by round name directly in Python
-    grouped_matches = defaultdict(list)
+    # Enrich matches with competitor names for template rendering
     for match in matches:
         match.competitor1_name = db.session.get(Competitor, match.competitor1_id).name if match.competitor1_id else "TBD"
         match.competitor2_name = db.session.get(Competitor, match.competitor2_id).name if match.competitor2_id else "TBD"
-        grouped_matches[match.round_name].append(match)
 
-    # Matches are queried in creation order, which matches bracket round order,
-    # so grouped_matches preserves the correct display sequence.
+    # Build symmetric bracket columns
+    columns = _build_bracket_display(matches)
 
     # Compute medal placements when the Final match is complete
     placements = _compute_placements(matches)
 
-    return render_template("bracket_fragment.html", rounds=grouped_matches, placements=placements)
+    return render_template("bracket_fragment.html", columns=columns, placements=placements)
 
 
 def _compute_placements(matches):
