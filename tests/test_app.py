@@ -812,6 +812,36 @@ class TestUIMatchResult:
         assert resp.status_code == 200
         # The refreshed matches-container should include the winner's name in the next match
         assert winner.name.encode() in resp.data
+        # Non-final match: "advances to the next round!" message
+        assert b"advances to the next round!" in resp.data
+
+    def test_ui_record_result_final_match_shows_gold_message(self, client):
+        """Completing the Final match should show 'wins gold!' instead of 'advances'."""
+        div_id = _create_division(client).get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob", "Carol", "Dave"])
+        _generate_bracket(client, div_id)
+
+        # Complete both Round 1 matches so the Final's competitors are populated
+        round1_matches = Match.query.filter_by(division_id=div_id, round_name="Round 1").all()
+        for m in round1_matches:
+            client.post(
+                f"/ui/matches/{m.id}/result",
+                data={"status": "Completed", "winner_id": str(m.competitor1_id)},
+            )
+
+        final_match = Match.query.filter_by(division_id=div_id, round_name="Final").first()
+        assert final_match is not None
+        db.session.refresh(final_match)
+        winner_id = final_match.competitor1_id
+
+        resp = client.post(
+            f"/ui/matches/{final_match.id}/result",
+            data={"status": "Completed", "winner_id": str(winner_id)},
+        )
+        assert resp.status_code == 200
+        assert b"wins gold!" in resp.data
+        assert b"advances to the next round!" not in resp.data
+
 
     def test_ui_record_result_match_not_found(self, client):
         resp = client.post(

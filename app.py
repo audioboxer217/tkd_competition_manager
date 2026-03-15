@@ -922,10 +922,15 @@ def ui_record_result(match_id):
         winner_name = escape(winner.name)
         match_number = match.match_number
 
+        if match.round_name == "Final":
+            result_message = f'<strong>{winner_name}</strong> wins gold!'
+        else:
+            result_message = f'<strong>{winner_name}</strong> advances to the next round!'
+
         notification_html = (
             f'<div class="result-notification-content">'
             f'<h3 style="margin-top: 0;">Match {match_number} Complete</h3>'
-            f'<p><strong>{winner_name}</strong> advances to the next round!</p>'
+            f'<p>{result_message}</p>'
             f'</div>'
         )
 
