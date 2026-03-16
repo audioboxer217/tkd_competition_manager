@@ -580,12 +580,10 @@ def ui_public_rings():
         {% if ring.last_completed %}
             <strong>{{ ring.last_completed.match_number }}</strong> - <a href="/ui/divisions/{{ ring.last_completed.division.id }}/bracket">{{ ring.last_completed.division.name }}</a> ({{ ring.last_completed.round_short }})
             <div class="match-item match-item-completed">
-                <span class="match-competitors">
-                    <font style="color: #252ceb; font-weight: bold;">{{ ring.last_completed.comp_1 }}</font>
-                    <span class="result-indicator {% if ring.last_completed.comp_1_result == 'W' %}result-win{% elif ring.last_completed.comp_1_result == 'L' %}result-loss{% else %}result-neutral{% endif %}">{{ ring.last_completed.comp_1_result }}</span>
-                    vs&nbsp;<span class="result-indicator {% if ring.last_completed.comp_2_result == 'W' %}result-win{% elif ring.last_completed.comp_2_result == 'L' %}result-loss{% else %}result-neutral{% endif %}">{{ ring.last_completed.comp_2_result }}</span>
-                    <font style="color: #eb2525; font-weight: bold;">{{ ring.last_completed.comp_2 }}</font>
-                </span>
+                <div>
+                    <div><font style="color: #252ceb; font-weight: bold;">{{ ring.last_completed.comp_1 }}</font> <span class="result-indicator {% if ring.last_completed.comp_1_result == 'W' %}result-win{% elif ring.last_completed.comp_1_result == 'L' %}result-loss{% else %}result-neutral{% endif %}">{{ ring.last_completed.comp_1_result }}</span></div>
+                    <div><font style="color: #eb2525; font-weight: bold;">{{ ring.last_completed.comp_2 }}</font> <span class="result-indicator {% if ring.last_completed.comp_2_result == 'W' %}result-win{% elif ring.last_completed.comp_2_result == 'L' %}result-loss{% else %}result-neutral{% endif %}">{{ ring.last_completed.comp_2_result }}</span></div>
+                </div>
                 <span class="status-completed">{{ ring.last_completed.status }}</span>
             </div>
         {% endif %}
