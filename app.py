@@ -70,6 +70,7 @@ class Division(db.Model):
     name = db.Column(db.String(100), nullable=False)  # e.g., 'Male - Black Belt - Under 70kg'
     event_type = db.Column(db.String(20), nullable=False, default="kyorugi")  # 'poomsae' or 'kyorugi'
     ring_id = db.Column(db.Integer, db.ForeignKey("ring.id"), nullable=True)  # For poomsae: which ring is hosting this event
+    ring_sequence = db.Column(db.Integer, nullable=True)  # For poomsae: display order within the ring (1, 2, 3, ...)
     event_status = db.Column(db.String(20), nullable=False, default="Pending")  # For poomsae: 'Pending', 'In Progress', 'Completed'
     competitors = db.relationship("Competitor", backref="division", lazy=True)
     matches = db.relationship("Match", backref="division", lazy=True)
@@ -1240,10 +1241,11 @@ def _poomsae_results_fragment_html(div_id):
 @app.route("/ui/divisions/<int:div_id>/ring_assignment", methods=["PATCH"])
 @login_required
 def ui_poomsae_ring_assignment(div_id):
-    """Assign a poomsae division to a ring and update its event status."""
+    """Assign a poomsae division to a ring and update its event status and ring sequence."""
     division = Division.query.get_or_404(div_id)
     ring_id = request.form.get("ring_id")
     event_status = request.form.get("event_status", "Pending")
+    ring_sequence_raw = request.form.get("ring_sequence", "")
 
     if ring_id:
         ring = Ring.query.get_or_404(int(ring_id))
@@ -1251,10 +1253,38 @@ def ui_poomsae_ring_assignment(div_id):
     else:
         division.ring_id = None
     division.event_status = event_status
+
+    if ring_sequence_raw.strip():
+        try:
+            division.ring_sequence = int(ring_sequence_raw)
+        except ValueError:
+            return "Invalid ring_sequence value.", 400
+    else:
+        division.ring_sequence = None
+
     db.session.commit()
 
     rings = Ring.query.all()
     return render_template("_bracket_controls.html", division=division, rings=rings)
+
+
+@app.route("/ui/divisions/<int:div_id>/event_status", methods=["PATCH"])
+@login_required
+def ui_update_event_status(div_id):
+    """Update the event status of a poomsae division (used from the Scorekeeper page)."""
+    division = Division.query.get_or_404(div_id)
+    event_status = request.form.get("event_status", "Pending")
+    if event_status not in ("Pending", "In Progress", "Completed"):
+        return "Invalid status.", 400
+    division.event_status = event_status
+    db.session.commit()
+    ranked = _build_poomsae_ranked(div_id)
+    return render_template(
+        "poomsae_results_fragment.html",
+        division=division,
+        ranked=ranked,
+        scorekeeper_mode=True,
+    )
 
 
 @app.route("/ui/divisions/<int:div_id>/competitors/<int:comp_id>/score", methods=["POST"])
@@ -1300,7 +1330,9 @@ def poomsae_results_page(div_id):
 def ui_ring_poomsae_divisions(ring_id):
     """HTMX fragment: poomsae divisions assigned to a ring with score-entry forms (for scorekeeper)."""
     Ring.query.get_or_404(ring_id)
-    divisions = Division.query.filter_by(ring_id=ring_id, event_type="poomsae").order_by(Division.name).all()
+    divisions = Division.query.filter_by(ring_id=ring_id, event_type="poomsae").all()
+    # Sort by ring_sequence (nulls last), then by name
+    divisions.sort(key=lambda d: (d.ring_sequence is None, d.ring_sequence or 0, d.name))
     if not divisions:
         return '<div class="empty-state">No poomsae divisions assigned to this ring.</div>'
 
