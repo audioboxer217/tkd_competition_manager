@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>{{ division.name }} - Manage Scores</title>
+    <script src="https://unpkg.com/htmx.org@1.9.6"></script>
+    <style>
+        body {
+            font-family: system-ui, sans-serif;
+            background: #f8fafc;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-left: 10px;
+            vertical-align: middle;
+        }
+
+        .status-badge.pending   { background: #f1f5f9; color: #64748b; }
+        .status-badge.in-progress { background: #dcfce7; color: #15803d; }
+        .status-badge.completed  { background: #e0e7ff; color: #3730a3; }
+
+        .status-pending   { background: #fef3c7; color: #92400e; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: 600; }
+        .status-in-progress { background: #dbeafe; color: #1e40af; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: 600; }
+        .status-completed { background: #d1fae5; color: #065f46; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: 600; }
+
+        .btn-back {
+            display: inline-block;
+            background: #e2e8f0;
+            color: #475569;
+            padding: 5px 12px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            text-decoration: none;
+            border: 1px solid #cbd5e1;
+        }
+
+        .btn-back:hover { background: #cbd5e1; color: #0f172a; }
+
+        .poomsae-row-gold   { background: #fef9c3; }
+        .poomsae-row-silver { background: #f1f5f9; }
+        .poomsae-row-bronze { background: #fff7ed; }
+        .poomsae-score-unset { color: #94a3b8; }
+        .poomsae-score-set   { font-weight: bold; color: #0f172a; }
+    </style>
+</head>
+
+<body hx-headers='{"X-CSRFToken": "{{ csrf_token() }}"}'>
+
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <a href="/admin" class="btn-back">&larr; Back to Admin</a>
+        <a href="/admin/divisions/{{ division.id }}/poomsae_results" class="btn-back">🏅 View Results</a>
+    </div>
+
+    <div class="container">
+        <div style="text-align: center; margin-bottom: 24px;">
+            <h1 style="margin: 0 0 6px 0;">{{ division.name }}</h1>
+            <span class="status-badge {% if division.event_status == 'In Progress' %}in-progress{% elif division.event_status == 'Completed' %}completed{% else %}pending{% endif %}">
+                {{ division.event_status }}
+            </span>
+            <p style="color: #64748b; margin: 8px 0 0 0; font-size: 0.9rem;">Enter or update competitor scores below.</p>
+        </div>
+
+        <div id="poomsae-scores-manage"
+             hx-get="/ui/divisions/{{ division.id }}/poomsae_results_fragment"
+             hx-trigger="load"
+             hx-swap="outerHTML">
+            <p style="text-align: center; color: #64748b;">Loading scores&hellip;</p>
+        </div>
+    </div>
+
+</body>
+
+</html>

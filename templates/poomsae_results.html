@@ -20,7 +20,7 @@
         }
 
         .container {
-            max-width: 800px;
+            max-width: 700px;
             margin: 0 auto;
             background: white;
             padding: 30px;
@@ -53,15 +53,6 @@
             color: #3730a3;
         }
 
-        a.back-link {
-            color: #64748b;
-            text-decoration: none;
-        }
-
-        a.back-link:hover {
-            color: #0f172a;
-        }
-
         .btn-back {
             display: inline-block;
             background: #e2e8f0;
@@ -80,7 +71,7 @@
     </style>
 </head>
 
-<body hx-headers='{"X-CSRFToken": "{{ csrf_token() }}"}'>
+<body>
 
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
         <a href="/results" class="btn-back">&larr; Back to Results</a>
@@ -100,8 +91,8 @@
             {% endif %}
         </div>
 
-        <div id="poomsae-results-container"
-             hx-get="/ui/divisions/{{ division.id }}/poomsae_results_fragment"
+        <div id="poomsae-placements-container"
+             hx-get="/ui/divisions/{{ division.id }}/poomsae_placements_fragment"
              hx-trigger="load, every 15s"
              hx-swap="outerHTML">
             <p style="text-align: center; color: #64748b;">Loading results&hellip;</p>

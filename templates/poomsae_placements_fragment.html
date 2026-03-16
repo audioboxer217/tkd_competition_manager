@@ -1,0 +1,47 @@
+<div id="poomsae-placements-container">
+{% set scored = ranked | selectattr('1') | list %}
+{% if not scored %}
+<p style="text-align: center; color: #94a3b8; font-style: italic; padding: 20px 0;">
+    No scores recorded yet.
+</p>
+{% else %}
+<style>
+    .placement-gold   { background: #fef9c3; }
+    .placement-silver { background: #f1f5f9; }
+    .placement-bronze { background: #fff7ed; }
+</style>
+<table style="width: 100%; border-collapse: collapse; font-size: 1rem;">
+    <thead>
+        <tr style="background: #1e293b; color: white;">
+            <th style="padding: 10px 16px; text-align: center; width: 60px;">Place</th>
+            <th style="padding: 10px 16px; text-align: left;">Competitor</th>
+            <th style="padding: 10px 16px; text-align: center; width: 110px;">Score</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for competitor, score in ranked %}
+        {% set loop_index = loop.index %}
+        {% set has_score = score is not none %}
+        {% if has_score %}
+            {# Ranks 3 and 4 both receive bronze (two 3rds) #}
+            {% if loop_index == 1 %}{% set row_class = "placement-gold" %}{% set medal = "🥇" %}
+            {% elif loop_index == 2 %}{% set row_class = "placement-silver" %}{% set medal = "🥈" %}
+            {% elif loop_index == 3 or loop_index == 4 %}{% set row_class = "placement-bronze" %}{% set medal = "🥉" %}
+            {% else %}{% set row_class = "" %}{% set medal = loop_index | string %}{% endif %}
+        <tr class="{{ row_class }}" style="border-bottom: 1px solid #e2e8f0;">
+            <td style="padding: 10px 16px; text-align: center; font-size: 1.4rem; font-weight: bold;">{{ medal }}</td>
+            <td style="padding: 10px 16px; font-weight: {% if loop_index <= 4 %}bold{% else %}normal{% endif %};">{{ competitor.name }}</td>
+            <td style="padding: 10px 16px; text-align: center; font-weight: bold; color: #0f172a;">{{ "%.3f"|format(score.score_value) }}</td>
+        </tr>
+        {% endif %}
+        {% endfor %}
+    </tbody>
+</table>
+{% if ranked | selectattr('1', 'none') | list %}
+<div style="margin-top: 16px; padding: 10px 14px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 0.9rem; color: #64748b;">
+    <strong>Pending scores:</strong>
+    {% for competitor, score in ranked %}{% if score is none %}{{ competitor.name }}{% if not loop.last %}, {% endif %}{% endif %}{% endfor %}
+</div>
+{% endif %}
+{% endif %}
+</div>
