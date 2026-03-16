@@ -81,8 +81,9 @@
 
         const modal = document.getElementById('htmx-error-modal');
         const okButton = document.getElementById('htmx-error-ok');
+        const backdrop = modal ? modal.querySelector('.htmx-error-backdrop') : null;
 
-        if (!modal || !okButton) {
+        if (!modal || !okButton || !backdrop) {
             return;
         }
 
@@ -103,6 +104,7 @@
         }
 
         okButton.addEventListener('click', closeModal);
+        backdrop.addEventListener('click', closeModal);
 
         document.addEventListener('keydown', function (event) {
             if (event.key === 'Escape' && !modal.hidden) {
