@@ -1968,6 +1968,27 @@ class TestPoomsaeRingAssignment:
         assert b"Generate Bracket" in resp.data
         assert b"Ring Assignment" not in resp.data
 
+    def test_poomsae_bracket_controls_shows_bracket_generation(self, client):
+        """Poomsae divisions should also support bracket generation."""
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+
+        resp = client.get(f"/ui/divisions/{div_id}/bracket_controls")
+        assert resp.status_code == 200
+        assert b"Generate Bracket" in resp.data
+
+    def test_poomsae_bracket_controls_manage_bracket_when_bracket_exists(self, client):
+        """Poomsae divisions with a bracket should show bracket management controls."""
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _generate_bracket(client, div_id)
+
+        resp = client.get(f"/ui/divisions/{div_id}/bracket_controls")
+        assert resp.status_code == 200
+        assert b"Manage" in resp.data
+        assert b"Schedule Bracket" in resp.data
+        assert b"Regenerate Bracket" in resp.data
+
     def test_poomsae_bracket_controls_shows_scores_link_when_competitors(self, client):
         div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
         _add_competitors(client, div_id, ["Alice", "Bob"])
@@ -2180,11 +2201,23 @@ class TestPoomsaeResultsPage:
         assert b"\xf0\x9f\xa5\x89" in resp.data  # 🥉
 
     def test_results_divisions_poomsae_links_to_poomsae_results(self, client):
+        """Poomsae division without a bracket links to the poomsae results page."""
         div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
 
         resp = client.get("/ui/results_divisions?event_type=poomsae")
         assert resp.status_code == 200
         assert f"/admin/divisions/{div_id}/poomsae_results".encode() in resp.data
+
+    def test_results_divisions_poomsae_with_bracket_links_to_bracket(self, client):
+        """Poomsae division that has a bracket links to the bracket view, not poomsae results."""
+        div_id = _create_division(client, "Bracket Poomsae Div", "poomsae").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _generate_bracket(client, div_id)
+
+        resp = client.get("/ui/results_divisions?event_type=poomsae")
+        assert resp.status_code == 200
+        assert f"/ui/divisions/{div_id}/bracket".encode() in resp.data
+        assert f"/admin/divisions/{div_id}/poomsae_results".encode() not in resp.data
 
     def test_results_divisions_kyorugi_still_links_to_bracket(self, client):
         div_id = _create_division(client, "Kyorugi Div", "kyorugi").get_json()["id"]
