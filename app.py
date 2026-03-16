@@ -6,7 +6,7 @@ from functools import wraps
 from urllib.parse import urlparse
 
 from dotenv import load_dotenv
-from flask import Flask, Response, jsonify, redirect, render_template, render_template_string, request, session, url_for
+from flask import Flask, Response, jsonify, make_response, redirect, render_template, render_template_string, request, session, url_for
 from flask_sqlalchemy import SQLAlchemy
 from flask_wtf.csrf import CSRFProtect
 from markupsafe import escape
@@ -1098,9 +1098,19 @@ def ui_record_result(match_id):
     status = request.form.get("status")
     winner_id = request.form.get("winner_id")
 
-    match.status = status
-
     if status == "In Progress":
+        if match.ring_id is not None:
+            existing_in_progress = Match.query.filter(
+                Match.ring_id == match.ring_id,
+                Match.status == "In Progress",
+                Match.id != match.id,
+            ).first()
+            if existing_in_progress:
+                resp = make_response(_scorekeeper_match_card_html(match))
+                resp.headers["HX-Trigger"] = "showInProgressError"
+                return resp
+
+        match.status = status
         db.session.commit()
         db.session.refresh(match)
         return _scorekeeper_match_card_html(match)
@@ -1109,6 +1119,7 @@ def ui_record_result(match_id):
         if not winner_id:
             return "<div style='color: red;'>Error: Winner must be selected.</div>", 400
 
+        match.status = status
         match.winner_id = int(winner_id)
 
         # --- BRACKET ADVANCEMENT LOGIC ---

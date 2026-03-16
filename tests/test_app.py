@@ -1069,6 +1069,87 @@ class TestUIMatchResult:
         )
         assert resp.status_code == 400
 
+    def test_ui_record_result_in_progress_conflict_blocked(self, client):
+        """Starting a match while another is In Progress on the same ring triggers an error response."""
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_id = _create_division(client).get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob", "Carol", "Dave"])
+        _generate_bracket(client, div_id)
+
+        matches = Match.query.filter_by(division_id=div_id, status="Pending").all()
+        assert len(matches) >= 2
+
+        # Schedule both matches to the same ring
+        for seq, match in enumerate(matches[:2], start=1):
+            client.put(
+                f"/matches/{match.id}/schedule",
+                data={"ring_id": str(ring_id), "ring_sequence": str(seq)},
+            )
+
+        first_match, second_match = matches[0], matches[1]
+
+        # Start first match
+        resp = client.post(
+            f"/ui/matches/{first_match.id}/result",
+            data={"status": "In Progress"},
+        )
+        assert resp.status_code == 200
+        db.session.refresh(first_match)
+        assert first_match.status == "In Progress"
+
+        # Attempt to start second match while first is still In Progress
+        resp = client.post(
+            f"/ui/matches/{second_match.id}/result",
+            data={"status": "In Progress"},
+        )
+        assert resp.status_code == 200
+        assert resp.headers.get("HX-Trigger") == "showInProgressError"
+        db.session.refresh(second_match)
+        # Second match must remain Pending
+        assert second_match.status == "Pending"
+
+    def test_ui_record_result_in_progress_no_conflict_different_rings(self, client):
+        """Starting a match when another ring has an In Progress match is allowed."""
+        ring1_id = _create_ring(client, "Ring 1").get_json()["id"]
+        ring2_id = _create_ring(client, "Ring 2").get_json()["id"]
+        div_id = _create_division(client).get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob", "Carol", "Dave"])
+        _generate_bracket(client, div_id)
+
+        matches = Match.query.filter_by(division_id=div_id, status="Pending").all()
+        assert len(matches) >= 2
+
+        first_match, second_match = matches[0], matches[1]
+
+        # Schedule matches to different rings
+        client.put(
+            f"/matches/{first_match.id}/schedule",
+            data={"ring_id": str(ring1_id), "ring_sequence": "1"},
+        )
+        client.put(
+            f"/matches/{second_match.id}/schedule",
+            data={"ring_id": str(ring2_id), "ring_sequence": "1"},
+        )
+
+        # Start first match on ring 1
+        resp = client.post(
+            f"/ui/matches/{first_match.id}/result",
+            data={"status": "In Progress"},
+        )
+        assert resp.status_code == 200
+        db.session.refresh(first_match)
+        assert first_match.status == "In Progress"
+
+        # Start second match on ring 2 — should succeed with no HX-Trigger error
+        resp = client.post(
+            f"/ui/matches/{second_match.id}/result",
+            data={"status": "In Progress"},
+        )
+        assert resp.status_code == 200
+        assert resp.headers.get("HX-Trigger") != "showInProgressError"
+        db.session.refresh(second_match)
+        assert second_match.status == "In Progress"
+
 
 # ---------------------------------------------------------------------------
 # Match scheduling (HTMX)
