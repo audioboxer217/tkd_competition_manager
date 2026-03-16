@@ -47,10 +47,10 @@ class TestAbbrevRound:
         assert _abbrev_round("Quarter-Final") == "QF"
 
     def test_round_1(self):
-        assert _abbrev_round("Round 1") == "R1"
+        assert _abbrev_round("Round of 16") == "R16"
 
     def test_round_2(self):
-        assert _abbrev_round("Round 2") == "R2"
+        assert _abbrev_round("Round of 32") == "R32"
 
     def test_unknown_passthrough(self):
         assert _abbrev_round("Mystery Round") == "Mystery Round"
@@ -561,7 +561,7 @@ class TestUIRings:
         assert "B. Jones" not in body
 
     def test_ui_public_rings_round_name_abbreviated(self, client):
-        """Round names are shown as short codes: R1, QF, SF, F."""
+        """Round names are shown as short codes: R16, QF, SF, F."""
         ring = Ring(name="Ring 1")
         division = Division(name="Test Division", event_type="kyorugi")
         db.session.add_all([ring, division])
@@ -572,7 +572,7 @@ class TestUIRings:
         db.session.flush()
 
         rounds = [
-            ("Round 1", comps[0], comps[1], 200),
+            ("Round of 16", comps[0], comps[1], 200),
             ("Quarter-Final", comps[2], comps[3], 201),
             ("Semi-Final", comps[4], comps[5], 202),
             ("Final", comps[6], comps[7], 203),
@@ -589,11 +589,11 @@ class TestUIRings:
         assert resp.status_code == 200
         body = resp.data.decode()
 
-        assert "(R1)" in body
+        assert "(R16)" in body
         assert "(QF)" in body
         assert "(SF)" in body
         assert "(F)" in body
-        assert "Round 1" not in body
+        assert "Round of 16" not in body
         assert "Quarter-Final" not in body
         assert "Semi-Final" not in body
         assert "Final" not in body
