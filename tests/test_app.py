@@ -1246,6 +1246,10 @@ class TestPageRoutes:
     def test_admin(self, client):
         resp = client.get("/admin")
         assert resp.status_code == 200
+        assert b'name="viewport"' in resp.data
+        assert b'width=device-width' in resp.data
+        assert b'flex-direction: column' in resp.data
+        assert b'@media (max-width: 700px)' in resp.data
 
     def test_admin_division_setup(self, client):
         div_id = _create_division(client).get_json()["id"]

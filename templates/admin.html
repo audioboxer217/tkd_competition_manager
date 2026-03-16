@@ -3,6 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Tournament Admin</title>
     <script src="https://unpkg.com/htmx.org@1.9.6"></script>
     <style>
@@ -131,13 +132,40 @@
         .active-tab:hover {
             background: #1d4ed8;
         }
+
+        @media (max-width: 700px) {
+            body {
+                padding: 12px;
+            }
+
+            .admin-container {
+                flex-direction: column;
+            }
+
+            .form-group {
+                flex-wrap: wrap;
+            }
+
+            .form-group input[type="text"] {
+                min-width: 0;
+            }
+
+            .form-group button {
+                width: 100%;
+            }
+
+            li {
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+        }
     </style>
 </head>
 
 <body hx-headers='{"X-CSRFToken": "{{ csrf_token() }}"}'>
 
     <h1 style="text-align: center; color: #0f172a;">Admin Dashboard</h1>
-    <div style="text-align: right; max-width: 1200px; margin: 0 auto 10px auto;">
+    <div style="display: flex; justify-content: flex-end; max-width: 1200px; margin: 0 auto 10px auto; flex-wrap: wrap;">
         <form method="POST" action="/logout" style="display: inline;">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" style="background: #64748b; font-size: 0.875rem; padding: 6px 14px;">Logout</button>
