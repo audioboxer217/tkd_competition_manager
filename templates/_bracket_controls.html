@@ -1,5 +1,37 @@
 {% if division.event_type == 'poomsae' %}
-<h4 style="margin-top: 0; margin-bottom: 12px; color: #0f172a;">Ring Assignment</h4>
+
+{% if division.poomsae_style is none %}
+{# ── Style not yet chosen: show picker ── #}
+<h4 style="margin-top: 0; margin-bottom: 8px; color: #0f172a;">Choose Event Format</h4>
+<p style="font-size: 0.9rem; color: #64748b; margin: 0 0 14px 0;">
+    Select how this poomsae division will be run. This <strong>cannot be changed</strong> once set.
+</p>
+<div style="display: flex; gap: 10px;">
+    <form hx-post="/ui/divisions/{{ division.id }}/poomsae_style"
+          hx-target="#bracket-controls" hx-swap="innerHTML" style="flex: 1;">
+        <button name="poomsae_style" value="group" type="submit"
+                style="width: 100%; padding: 14px 10px; background: #2563eb; color: white; border: none;
+                       border-radius: 6px; font-size: 1rem; font-weight: 600; cursor: pointer;">
+            📋 Group (Score-Based)
+        </button>
+    </form>
+    <form hx-post="/ui/divisions/{{ division.id }}/poomsae_style"
+          hx-target="#bracket-controls" hx-swap="innerHTML" style="flex: 1;">
+        <button name="poomsae_style" value="bracket" type="submit"
+                style="width: 100%; padding: 14px 10px; background: #7c3aed; color: white; border: none;
+                       border-radius: 6px; font-size: 1rem; font-weight: 600; cursor: pointer;">
+            🏆 Bracket
+        </button>
+    </form>
+</div>
+
+{% elif division.poomsae_style == 'group' %}
+{# ── Group (score-based) — locked ── #}
+<div style="display: flex; align-items: center; gap: 8px; margin-bottom: 14px;">
+    <h4 style="margin: 0; color: #0f172a;">Group Event</h4>
+    <span style="font-size: 0.8rem; background: #dbeafe; color: #1e40af; padding: 2px 8px; border-radius: 12px; font-weight: 600;">📋 Group 🔒</span>
+</div>
+<h4 style="margin: 0 0 10px 0; color: #64748b; font-size: 0.9rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;">Ring Assignment</h4>
 <form hx-patch="/ui/divisions/{{ division.id }}/ring_assignment"
       hx-target="#bracket-controls" hx-swap="innerHTML">
     <div style="margin-bottom: 10px;">
@@ -34,16 +66,26 @@
 </div>
 {% endif %}
 {% if division.competitors %}
-<a href="/admin/divisions/{{ division.id }}/poomsae_results"
-   style="display: inline-block; background: #059669; color: white; padding: 8px 16px; text-decoration: none; border-radius: 4px; margin-top: 15px; width: 100%; box-sizing: border-box; text-align: center;">
-    Record Scores &amp; View Results
-</a>
+<div style="display: flex; gap: 8px; margin-top: 15px;">
+    <a href="/admin/divisions/{{ division.id }}/score_manage"
+       style="flex: 1; display: inline-block; background: #059669; color: white; padding: 8px 16px; text-decoration: none; border-radius: 4px; box-sizing: border-box; text-align: center; font-weight: 600;">
+        ✏️ Manage Scores
+    </a>
+    <a href="/admin/divisions/{{ division.id }}/poomsae_results"
+       style="flex: 1; display: inline-block; background: #7c3aed; color: white; padding: 8px 16px; text-decoration: none; border-radius: 4px; box-sizing: border-box; text-align: center; font-weight: 600;">
+        🏅 View Results
+    </a>
+</div>
 {% else %}
 <p style="font-size: 0.9rem; color: #64748b; margin-top: 15px;">Add competitors above to enable score recording.</p>
 {% endif %}
-<hr style="border: none; border-top: 1px solid #e2e8f0; margin: 18px 0 14px;">
-<h4 style="margin: 0 0 10px 0; color: #0f172a;">Bracket</h4>
-{% endif %}
+
+{% elif division.poomsae_style == 'bracket' %}
+{# ── Bracket — locked ── #}
+<div style="display: flex; align-items: center; gap: 8px; margin-bottom: 14px;">
+    <h4 style="margin: 0; color: #0f172a;">Bracket Event</h4>
+    <span style="font-size: 0.8rem; background: #ede9fe; color: #5b21b6; padding: 2px 8px; border-radius: 12px; font-weight: 600;">🏆 Bracket 🔒</span>
+</div>
 {% if division.matches %}
 <div style="padding: 15px; background: #d1fae5; border-radius: 4px; margin-bottom: 10px;">
     <a href="/admin/divisions/{{ division.id }}/bracket_manage"
@@ -67,4 +109,34 @@
 </button>
 {% else %}
 <p style="font-size: 0.9rem; color: #64748b;">Add competitors above, then generate the bracket.</p>
+{% endif %}
+
+{% endif %}{# end poomsae_style #}
+
+{% else %}
+{# ── Kyorugi: bracket controls ── #}
+{% if division.matches %}
+<div style="padding: 15px; background: #d1fae5; border-radius: 4px; margin-bottom: 10px;">
+    <a href="/admin/divisions/{{ division.id }}/bracket_manage"
+        style="display: inline-block; background: #059669; color: white; padding: 8px 16px; text-decoration: none; border-radius: 4px;">
+        Manage &amp; Schedule Bracket
+    </a>
+</div>
+<button class="generate-btn" style="background: #f59e0b;"
+        hx-post="/divisions/{{ division.id }}/generate_bracket"
+        hx-target="#bracket-controls" hx-swap="innerHTML"
+        hx-confirm="Regenerate bracket? This will delete all existing match data and cannot be undone.">
+    Regenerate Bracket
+</button>
+{% elif division.competitors %}
+<p style="font-size: 0.9rem; color: #64748b;">Once all competitors are added, lock the division and
+    build the bracket.</p>
+<button class="generate-btn"
+        hx-post="/divisions/{{ division.id }}/generate_bracket"
+        hx-target="#bracket-controls" hx-swap="innerHTML">
+    Generate Bracket
+</button>
+{% else %}
+<p style="font-size: 0.9rem; color: #64748b;">Add competitors above, then generate the bracket.</p>
+{% endif %}
 {% endif %}

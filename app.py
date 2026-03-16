@@ -69,6 +69,7 @@ class Division(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)  # e.g., 'Male - Black Belt - Under 70kg'
     event_type = db.Column(db.String(20), nullable=False, default="kyorugi")  # 'poomsae' or 'kyorugi'
+    poomsae_style = db.Column(db.String(10), nullable=True)  # For poomsae: 'bracket' or 'group'; None = not yet set
     ring_id = db.Column(db.Integer, db.ForeignKey("ring.id"), nullable=True)  # For poomsae: which ring is hosting this event
     ring_sequence = db.Column(db.Integer, nullable=True)  # For poomsae: display order within the ring (1, 2, 3, ...)
     event_status = db.Column(db.String(20), nullable=False, default="Pending")  # For poomsae: 'Pending', 'In Progress', 'Completed'
@@ -1238,6 +1239,24 @@ def _poomsae_results_fragment_html(div_id):
     )
 
 
+@app.route("/ui/divisions/<int:div_id>/poomsae_style", methods=["POST"])
+@login_required
+def ui_set_poomsae_style(div_id):
+    """Set the poomsae division style ('bracket' or 'group'). Locked once set."""
+    division = Division.query.get_or_404(div_id)
+    if division.event_type != "poomsae":
+        return "Not a poomsae division.", 400
+    if division.poomsae_style is not None:
+        return "Style already set.", 400
+    style = request.form.get("poomsae_style")
+    if style not in ("bracket", "group"):
+        return "Invalid style.", 400
+    division.poomsae_style = style
+    db.session.commit()
+    rings = Ring.query.all()
+    return render_template("_bracket_controls.html", division=division, rings=rings)
+
+
 @app.route("/ui/divisions/<int:div_id>/ring_assignment", methods=["PATCH"])
 @login_required
 def ui_poomsae_ring_assignment(div_id):
@@ -1314,15 +1333,31 @@ def ui_record_poomsae_score(div_id, comp_id):
 
 @app.route("/ui/divisions/<int:div_id>/poomsae_results_fragment")
 def ui_poomsae_results_fragment(div_id):
-    """HTMX fragment: ranked poomsae results with score-entry forms."""
+    """HTMX fragment: ranked poomsae results with score-entry forms (for score_manage and scorekeeper)."""
     return _poomsae_results_fragment_html(div_id)
+
+
+@app.route("/ui/divisions/<int:div_id>/poomsae_placements_fragment")
+def ui_poomsae_placements_fragment(div_id):
+    """HTMX fragment: read-only poomsae placements with medal rankings (1 gold, 1 silver, 2 bronze)."""
+    division = Division.query.get_or_404(div_id)
+    ranked = _build_poomsae_ranked(div_id)
+    return render_template("poomsae_placements_fragment.html", division=division, ranked=ranked)
 
 
 @app.route("/admin/divisions/<int:div_id>/poomsae_results")
 def poomsae_results_page(div_id):
-    """Full poomsae results page showing rankings and score entry."""
+    """Read-only poomsae results page showing medal placements (public/display view)."""
     division = Division.query.get_or_404(div_id)
     return render_template("poomsae_results.html", division=division)
+
+
+@app.route("/admin/divisions/<int:div_id>/score_manage")
+@login_required
+def poomsae_score_manage_page(div_id):
+    """Admin poomsae score management page for entering and updating competitor scores."""
+    division = Division.query.get_or_404(div_id)
+    return render_template("score_manage.html", division=division)
 
 
 @app.route("/ui/rings/<int:ring_id>/poomsae_divisions")

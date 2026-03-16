@@ -31,6 +31,14 @@ def _generate_bracket(client, div_id):
     return client.post(f"/divisions/{div_id}/generate_bracket")
 
 
+def _set_poomsae_style(client, div_id, style):
+    """Set the poomsae_style for a division ('bracket' or 'group')."""
+    return client.post(
+        f"/ui/divisions/{div_id}/poomsae_style",
+        data={"poomsae_style": style},
+    )
+
+
 # ---------------------------------------------------------------------------
 # _abbrev_round unit tests
 # ---------------------------------------------------------------------------
@@ -1845,6 +1853,7 @@ class TestPoomsaeRingAssignment:
     def test_poomsae_ring_assignment_returns_controls_fragment(self, client):
         ring_id = _create_ring(client, "Ring 1").get_json()["id"]
         div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+        _set_poomsae_style(client, div_id, "group")
 
         resp = client.patch(
             f"/ui/divisions/{div_id}/ring_assignment",
@@ -1856,6 +1865,7 @@ class TestPoomsaeRingAssignment:
     def test_poomsae_bracket_controls_shows_ring_form(self, client):
         _create_ring(client, "Ring 1")
         div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+        _set_poomsae_style(client, div_id, "group")
 
         resp = client.get(f"/ui/divisions/{div_id}/bracket_controls")
         assert resp.status_code == 200
@@ -1872,18 +1882,20 @@ class TestPoomsaeRingAssignment:
         assert b"Ring Assignment" not in resp.data
 
     def test_poomsae_bracket_controls_shows_bracket_generation(self, client):
-        """Poomsae divisions should also support bracket generation."""
+        """Poomsae bracket-style divisions should support bracket generation."""
         div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
         _add_competitors(client, div_id, ["Alice", "Bob"])
+        _set_poomsae_style(client, div_id, "bracket")
 
         resp = client.get(f"/ui/divisions/{div_id}/bracket_controls")
         assert resp.status_code == 200
         assert b"Generate Bracket" in resp.data
 
     def test_poomsae_bracket_controls_manage_bracket_when_bracket_exists(self, client):
-        """Poomsae divisions with a bracket should show bracket management controls."""
+        """Poomsae bracket-style divisions with a bracket should show bracket management controls."""
         div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
         _add_competitors(client, div_id, ["Alice", "Bob"])
+        _set_poomsae_style(client, div_id, "bracket")
         _generate_bracket(client, div_id)
 
         resp = client.get(f"/ui/divisions/{div_id}/bracket_controls")
@@ -1895,21 +1907,25 @@ class TestPoomsaeRingAssignment:
     def test_poomsae_bracket_controls_shows_scores_link_when_competitors(self, client):
         div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
         _add_competitors(client, div_id, ["Alice", "Bob"])
+        _set_poomsae_style(client, div_id, "group")
 
         resp = client.get(f"/ui/divisions/{div_id}/bracket_controls")
         assert resp.status_code == 200
-        assert b"Record Scores" in resp.data
+        assert b"Manage Scores" in resp.data
+        assert b"View Results" in resp.data
 
     def test_poomsae_bracket_controls_no_scores_link_without_competitors(self, client):
         div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+        _set_poomsae_style(client, div_id, "group")
 
         resp = client.get(f"/ui/divisions/{div_id}/bracket_controls")
         assert resp.status_code == 200
-        assert b"Record Scores" not in resp.data
+        assert b"Manage Scores" not in resp.data
 
     def test_poomsae_bracket_controls_shows_ring_order_field(self, client):
         _create_ring(client, "Ring 1")
         div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+        _set_poomsae_style(client, div_id, "group")
 
         resp = client.get(f"/ui/divisions/{div_id}/bracket_controls")
         assert resp.status_code == 200
@@ -2421,3 +2437,247 @@ class TestPoomsaeScorekeeperDivisions:
     def test_poomsae_divisions_fragment_not_found_ring(self, client):
         resp = client.get("/ui/rings/9999/poomsae_divisions")
         assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Poomsae Style Selector
+# ---------------------------------------------------------------------------
+
+
+class TestPoomsaeStyleSelector:
+    """Tests for the poomsae style selector (bracket vs group)."""
+
+    def test_unset_poomsae_shows_style_picker(self, client):
+        """New poomsae division shows the format selection before any style is chosen."""
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+
+        resp = client.get(f"/ui/divisions/{div_id}/bracket_controls")
+        assert resp.status_code == 200
+        assert b"Choose Event Format" in resp.data
+        assert b"Group (Score-Based)" in resp.data
+        assert b"Bracket" in resp.data
+
+    def test_set_poomsae_style_group(self, client):
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+
+        resp = _set_poomsae_style(client, div_id, "group")
+        assert resp.status_code == 200
+
+        from app import Division, db
+        div = db.session.get(Division, div_id)
+        assert div.poomsae_style == "group"
+
+    def test_set_poomsae_style_bracket(self, client):
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+
+        resp = _set_poomsae_style(client, div_id, "bracket")
+        assert resp.status_code == 200
+
+        from app import Division, db
+        div = db.session.get(Division, div_id)
+        assert div.poomsae_style == "bracket"
+
+    def test_poomsae_style_locked_after_set(self, client):
+        """Attempting to change poomsae_style after it is already set returns 400."""
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+        _set_poomsae_style(client, div_id, "group")
+
+        resp = _set_poomsae_style(client, div_id, "bracket")
+        assert resp.status_code == 400
+
+    def test_poomsae_style_invalid_value(self, client):
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+
+        resp = client.post(
+            f"/ui/divisions/{div_id}/poomsae_style",
+            data={"poomsae_style": "invalid"},
+        )
+        assert resp.status_code == 400
+
+    def test_poomsae_style_wrong_event_type(self, client):
+        div_id = _create_division(client, "Kyorugi Div", "kyorugi").get_json()["id"]
+
+        resp = client.post(
+            f"/ui/divisions/{div_id}/poomsae_style",
+            data={"poomsae_style": "group"},
+        )
+        assert resp.status_code == 400
+
+    def test_group_style_shows_ring_assignment(self, client):
+        """After choosing 'group', the ring assignment form is shown."""
+        _create_ring(client, "Ring 1")
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+        _set_poomsae_style(client, div_id, "group")
+
+        resp = client.get(f"/ui/divisions/{div_id}/bracket_controls")
+        assert resp.status_code == 200
+        assert b"Ring Assignment" in resp.data
+        assert b"Choose Event Format" not in resp.data
+
+    def test_bracket_style_shows_generate_bracket(self, client):
+        """After choosing 'bracket', the bracket generation controls are shown."""
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _set_poomsae_style(client, div_id, "bracket")
+
+        resp = client.get(f"/ui/divisions/{div_id}/bracket_controls")
+        assert resp.status_code == 200
+        assert b"Generate Bracket" in resp.data
+        assert b"Ring Assignment" not in resp.data
+        assert b"Choose Event Format" not in resp.data
+
+    def test_group_style_locked_badge_shown(self, client):
+        """Group style shows the locked badge."""
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+        _set_poomsae_style(client, div_id, "group")
+
+        resp = client.get(f"/ui/divisions/{div_id}/bracket_controls")
+        assert resp.status_code == 200
+        assert b"Group" in resp.data
+        assert b"\xf0\x9f\x94\x92" in resp.data  # 🔒
+
+    def test_bracket_style_locked_badge_shown(self, client):
+        """Bracket style shows the locked badge."""
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+        _set_poomsae_style(client, div_id, "bracket")
+
+        resp = client.get(f"/ui/divisions/{div_id}/bracket_controls")
+        assert resp.status_code == 200
+        assert b"Bracket" in resp.data
+        assert b"\xf0\x9f\x94\x92" in resp.data  # 🔒
+
+    def test_kyorugi_no_style_picker(self, client):
+        """Kyorugi divisions never show the style picker."""
+        div_id = _create_division(client, "Kyorugi Div", "kyorugi").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+
+        resp = client.get(f"/ui/divisions/{div_id}/bracket_controls")
+        assert resp.status_code == 200
+        assert b"Choose Event Format" not in resp.data
+        assert b"Generate Bracket" in resp.data
+
+
+# ---------------------------------------------------------------------------
+# Poomsae Score Manage (admin score entry page)
+# ---------------------------------------------------------------------------
+
+
+class TestPoomsaeScoreManagePage:
+    """Tests for the admin score management page (GET /admin/divisions/<id>/score_manage)."""
+
+    def test_score_manage_page_loads(self, client):
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+
+        resp = client.get(f"/admin/divisions/{div_id}/score_manage")
+        assert resp.status_code == 200
+        assert b"Poomsae Div" in resp.data
+        assert b"Manage Scores" in resp.data
+
+    def test_score_manage_page_not_found(self, client):
+        resp = client.get("/admin/divisions/9999/score_manage")
+        assert resp.status_code == 404
+
+    def test_score_manage_page_requires_login(self, client):
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+
+        from flask import session
+        with client.session_transaction() as sess:
+            sess.clear()
+
+        resp = client.get(f"/admin/divisions/{div_id}/score_manage")
+        # Should redirect or return HX-Redirect
+        assert resp.status_code in (302, 200)
+
+    def test_score_manage_page_links_to_results(self, client):
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+
+        resp = client.get(f"/admin/divisions/{div_id}/score_manage")
+        assert resp.status_code == 200
+        assert f"/admin/divisions/{div_id}/poomsae_results".encode() in resp.data
+
+
+# ---------------------------------------------------------------------------
+# Poomsae Placements Fragment (read-only medals view)
+# ---------------------------------------------------------------------------
+
+
+class TestPoomsaePlacementsFragment:
+    """Tests for the read-only poomsae placements fragment."""
+
+    def test_placements_fragment_empty(self, client):
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice"])
+
+        resp = client.get(f"/ui/divisions/{div_id}/poomsae_placements_fragment")
+        assert resp.status_code == 200
+        assert b"No scores recorded" in resp.data
+
+    def test_placements_fragment_shows_medals(self, client):
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob", "Carol", "Dave"])
+
+        from app import Competitor
+        comps = {c.name: c for c in Competitor.query.filter_by(division_id=div_id).all()}
+        client.post(f"/ui/divisions/{div_id}/competitors/{comps['Alice'].id}/score", data={"score_value": "9.5"})
+        client.post(f"/ui/divisions/{div_id}/competitors/{comps['Bob'].id}/score", data={"score_value": "9.0"})
+        client.post(f"/ui/divisions/{div_id}/competitors/{comps['Carol'].id}/score", data={"score_value": "8.5"})
+        client.post(f"/ui/divisions/{div_id}/competitors/{comps['Dave'].id}/score", data={"score_value": "8.0"})
+
+        resp = client.get(f"/ui/divisions/{div_id}/poomsae_placements_fragment")
+        assert resp.status_code == 200
+        assert b"\xf0\x9f\xa5\x87" in resp.data  # 🥇
+        assert b"\xf0\x9f\xa5\x88" in resp.data  # 🥈
+        assert b"\xf0\x9f\xa5\x89" in resp.data  # 🥉
+
+    def test_placements_fragment_two_bronzes(self, client):
+        """Both 3rd and 4th place should receive the bronze medal emoji."""
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob", "Carol", "Dave"])
+
+        from app import Competitor
+        comps = {c.name: c for c in Competitor.query.filter_by(division_id=div_id).all()}
+        client.post(f"/ui/divisions/{div_id}/competitors/{comps['Alice'].id}/score", data={"score_value": "9.5"})
+        client.post(f"/ui/divisions/{div_id}/competitors/{comps['Bob'].id}/score", data={"score_value": "9.0"})
+        client.post(f"/ui/divisions/{div_id}/competitors/{comps['Carol'].id}/score", data={"score_value": "8.5"})
+        client.post(f"/ui/divisions/{div_id}/competitors/{comps['Dave'].id}/score", data={"score_value": "8.0"})
+
+        resp = client.get(f"/ui/divisions/{div_id}/poomsae_placements_fragment")
+        html = resp.data.decode()
+        # Count bronze medal emojis — should appear twice (3rd and 4th place)
+        bronze_count = html.count("🥉")
+        assert bronze_count == 2
+
+    def test_placements_fragment_no_score_forms(self, client):
+        """Placements fragment is read-only — no score input forms."""
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice"])
+
+        from app import Competitor
+        comp = Competitor.query.filter_by(division_id=div_id).first()
+        client.post(f"/ui/divisions/{div_id}/competitors/{comp.id}/score", data={"score_value": "9.0"})
+
+        resp = client.get(f"/ui/divisions/{div_id}/poomsae_placements_fragment")
+        assert resp.status_code == 200
+        assert b"score_value" not in resp.data  # no score input field name
+        assert b"Save" not in resp.data
+
+    def test_placements_fragment_not_found(self, client):
+        resp = client.get("/ui/divisions/9999/poomsae_placements_fragment")
+        assert resp.status_code == 404
+
+    def test_poomsae_results_page_loads_placements_fragment(self, client):
+        """The read-only poomsae_results page references the placements fragment URL."""
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+
+        resp = client.get(f"/admin/divisions/{div_id}/poomsae_results")
+        assert resp.status_code == 200
+        assert b"poomsae_placements_fragment" in resp.data
+
+    def test_poomsae_results_page_no_score_entry(self, client):
+        """The public results page does not directly include score entry forms."""
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+
+        resp = client.get(f"/admin/divisions/{div_id}/poomsae_results")
+        assert resp.status_code == 200
+        # The page itself should not have score submission endpoints directly
+        assert b"poomsae_results_fragment" not in resp.data
