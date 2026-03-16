@@ -2842,3 +2842,199 @@ class TestPoomsaeUnifiedRingOrder:
         # No hidden matches-container
         assert b'display:none' not in resp.data
         assert b"poomsae-divisions-container" not in resp.data
+
+
+# ---------------------------------------------------------------------------
+# Live View ordering and sequence conflict prevention (comment 4071353484)
+# ---------------------------------------------------------------------------
+
+
+class TestPoomsaeLiveViewOrdering:
+    """Tests that group divisions and bracket matches are interleaved by sequence
+    in the public rings live view, and that bracket-style divisions are excluded."""
+
+    def test_group_division_appears_before_bracket_match_by_sequence(self, client):
+        """Group division at seq=2 appears before bracket match at seq=5 in live view."""
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+
+        # Bracket poomsae match at sequence 5
+        div_bracket = _create_division(client, "Bracket Div", "poomsae").get_json()["id"]
+        _add_competitors(client, div_bracket, ["Alice", "Bob"])
+        _set_poomsae_style(client, div_bracket, "bracket")
+        _generate_bracket(client, div_bracket)
+        match = Match.query.filter_by(division_id=div_bracket).first()
+        client.put(f"/matches/{match.id}/schedule",
+                   data={"ring_id": str(ring_id), "ring_sequence": "5"})
+
+        # Group division at sequence 2
+        div_group = _create_division(client, "Group Div", "poomsae").get_json()["id"]
+        _set_poomsae_style(client, div_group, "group")
+        client.patch(f"/ui/divisions/{div_group}/ring_assignment",
+                     data={"ring_id": str(ring_id), "event_status": "Pending", "ring_sequence": "2"})
+
+        resp = client.get("/ui/public_rings?event_type=poomsae")
+        assert resp.status_code == 200
+        html = resp.data.decode()
+
+        # Group Div (seq=2) should appear before Bracket Div (seq=5)
+        assert html.find("Group Div") < html.find("Bracket Div")
+
+    def test_bracket_style_division_excluded_from_live_view_divisions_loop(self, client):
+        """A bracket-style poomsae division doesn't appear in the divisions section
+        of the live view (it shows via its scheduled matches instead)."""
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+
+        div_bracket = _create_division(client, "Only Bracket", "poomsae").get_json()["id"]
+        _set_poomsae_style(client, div_bracket, "bracket")
+
+        # Assign ring_id and ring_sequence directly to simulate a bracket division in a ring
+        from app import Division, db
+        div = db.session.get(Division, div_bracket)
+        div.ring_id = ring_id
+        db.session.commit()
+
+        resp = client.get("/ui/public_rings?event_type=poomsae")
+        assert resp.status_code == 200
+        # It should not appear in the poomsae_items division list
+        # (it would only appear via a scheduled match; no match here so absent)
+        assert b"Only Bracket" not in resp.data
+
+    def test_unsequenced_group_division_sorted_last_in_live_view(self, client):
+        """Group division without sequence appears after bracket match with sequence."""
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+
+        # Bracket match at seq 1
+        div_bracket = _create_division(client, "Bracket First", "poomsae").get_json()["id"]
+        _add_competitors(client, div_bracket, ["Alice", "Bob"])
+        _set_poomsae_style(client, div_bracket, "bracket")
+        _generate_bracket(client, div_bracket)
+        match = Match.query.filter_by(division_id=div_bracket).first()
+        client.put(f"/matches/{match.id}/schedule",
+                   data={"ring_id": str(ring_id), "ring_sequence": "1"})
+
+        # Group division with no sequence
+        div_group = _create_division(client, "Group Last", "poomsae").get_json()["id"]
+        _set_poomsae_style(client, div_group, "group")
+        client.patch(f"/ui/divisions/{div_group}/ring_assignment",
+                     data={"ring_id": str(ring_id), "event_status": "Pending", "ring_sequence": ""})
+
+        resp = client.get("/ui/public_rings?event_type=poomsae")
+        assert resp.status_code == 200
+        html = resp.data.decode()
+
+        assert html.find("Bracket First") < html.find("Group Last")
+
+
+class TestPoomsaeSequenceConflictPrevention:
+    """Tests that group divisions and bracket matches cannot share the same
+    ring sequence number."""
+
+    def test_bracket_match_blocked_by_existing_group_division_sequence(self, client):
+        """Scheduling a bracket match at a sequence occupied by a group division returns
+        a conflict error (HTTP 200 with error HTML, per the bracket scheduling pattern)."""
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+
+        # Group division at sequence 5
+        div_group = _create_division(client, "Group Div", "poomsae").get_json()["id"]
+        _set_poomsae_style(client, div_group, "group")
+        client.patch(f"/ui/divisions/{div_group}/ring_assignment",
+                     data={"ring_id": str(ring_id), "event_status": "Pending", "ring_sequence": "5"})
+
+        # Bracket poomsae match — try to schedule at sequence 5
+        div_bracket = _create_division(client, "Bracket Div", "poomsae").get_json()["id"]
+        _add_competitors(client, div_bracket, ["Alice", "Bob"])
+        _set_poomsae_style(client, div_bracket, "bracket")
+        _generate_bracket(client, div_bracket)
+        match = Match.query.filter_by(division_id=div_bracket).first()
+
+        resp = client.put(f"/matches/{match.id}/schedule",
+                          data={"ring_id": str(ring_id), "ring_sequence": "5"})
+        # Returns 200 with error HTML (HTMX inline error pattern)
+        assert resp.status_code == 200
+        assert b"Sequence 5" in resp.data
+        assert b"already used" in resp.data
+
+        # Match should NOT be scheduled
+        from app import Match as MatchModel, db
+        db.session.refresh(match)
+        assert match.match_number is None
+
+    def test_group_division_blocked_by_existing_bracket_match_sequence(self, client):
+        """Assigning a group division to a sequence occupied by a bracket match returns 400."""
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+
+        # Bracket match at sequence 3
+        div_bracket = _create_division(client, "Bracket Div", "poomsae").get_json()["id"]
+        _add_competitors(client, div_bracket, ["Alice", "Bob"])
+        _set_poomsae_style(client, div_bracket, "bracket")
+        _generate_bracket(client, div_bracket)
+        match = Match.query.filter_by(division_id=div_bracket).first()
+        client.put(f"/matches/{match.id}/schedule",
+                   data={"ring_id": str(ring_id), "ring_sequence": "3"})
+
+        # Group division — try to use sequence 3
+        div_group = _create_division(client, "Group Div", "poomsae").get_json()["id"]
+        _set_poomsae_style(client, div_group, "group")
+        resp = client.patch(f"/ui/divisions/{div_group}/ring_assignment",
+                            data={"ring_id": str(ring_id), "event_status": "Pending",
+                                  "ring_sequence": "3"})
+        assert resp.status_code == 400
+        assert b"already used" in resp.data
+
+    def test_two_group_divisions_cannot_share_same_sequence_in_ring(self, client):
+        """Two group divisions in the same ring cannot both use the same ring_sequence."""
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+
+        div_a = _create_division(client, "Group A", "poomsae").get_json()["id"]
+        div_b = _create_division(client, "Group B", "poomsae").get_json()["id"]
+        _set_poomsae_style(client, div_a, "group")
+        _set_poomsae_style(client, div_b, "group")
+
+        # First assignment succeeds
+        resp_a = client.patch(f"/ui/divisions/{div_a}/ring_assignment",
+                              data={"ring_id": str(ring_id), "event_status": "Pending",
+                                    "ring_sequence": "7"})
+        assert resp_a.status_code == 200
+
+        # Second with same sequence should fail
+        resp_b = client.patch(f"/ui/divisions/{div_b}/ring_assignment",
+                              data={"ring_id": str(ring_id), "event_status": "Pending",
+                                    "ring_sequence": "7"})
+        assert resp_b.status_code == 400
+        assert b"already used" in resp_b.data
+
+    def test_sequence_conflict_allowed_in_different_rings(self, client):
+        """Same sequence number is allowed in different rings."""
+        ring_a = _create_ring(client, "Ring A").get_json()["id"]
+        ring_b = _create_ring(client, "Ring B").get_json()["id"]
+
+        div_a = _create_division(client, "Group A", "poomsae").get_json()["id"]
+        div_b = _create_division(client, "Group B", "poomsae").get_json()["id"]
+        _set_poomsae_style(client, div_a, "group")
+        _set_poomsae_style(client, div_b, "group")
+
+        resp_a = client.patch(f"/ui/divisions/{div_a}/ring_assignment",
+                              data={"ring_id": str(ring_a), "event_status": "Pending",
+                                    "ring_sequence": "4"})
+        resp_b = client.patch(f"/ui/divisions/{div_b}/ring_assignment",
+                              data={"ring_id": str(ring_b), "event_status": "Pending",
+                                    "ring_sequence": "4"})
+        assert resp_a.status_code == 200
+        assert resp_b.status_code == 200
+
+    def test_division_can_keep_its_own_sequence_when_reassigning(self, client):
+        """A group division can be saved again with the same ring_sequence it already holds."""
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_id = _create_division(client, "Group Div", "poomsae").get_json()["id"]
+        _set_poomsae_style(client, div_id, "group")
+
+        # First assignment
+        client.patch(f"/ui/divisions/{div_id}/ring_assignment",
+                     data={"ring_id": str(ring_id), "event_status": "Pending",
+                            "ring_sequence": "6"})
+
+        # Save again with same sequence (status change) — should succeed
+        resp = client.patch(f"/ui/divisions/{div_id}/ring_assignment",
+                            data={"ring_id": str(ring_id), "event_status": "In Progress",
+                                   "ring_sequence": "6"})
+        assert resp.status_code == 200
