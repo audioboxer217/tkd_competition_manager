@@ -580,11 +580,10 @@ def ui_public_rings():
         {% if ring.last_completed %}
             <strong>{{ ring.last_completed.match_number }}</strong> - <a href="/ui/divisions/{{ ring.last_completed.division.id }}/bracket">{{ ring.last_completed.division.name }}</a> ({{ ring.last_completed.round_short }})
             <div class="match-item match-item-completed">
-                <span>
+                <span class="match-competitors">
                     <font style="color: #252ceb; font-weight: bold;">{{ ring.last_completed.comp_1 }}</font>
                     <span class="result-indicator {% if ring.last_completed.comp_1_result == 'W' %}result-win{% elif ring.last_completed.comp_1_result == 'L' %}result-loss{% else %}result-neutral{% endif %}">{{ ring.last_completed.comp_1_result }}</span>
-                    vs<wbr>
-                    <span class="result-indicator {% if ring.last_completed.comp_2_result == 'W' %}result-win{% elif ring.last_completed.comp_2_result == 'L' %}result-loss{% else %}result-neutral{% endif %}">{{ ring.last_completed.comp_2_result }}</span>
+                    vs&nbsp;<span class="result-indicator {% if ring.last_completed.comp_2_result == 'W' %}result-win{% elif ring.last_completed.comp_2_result == 'L' %}result-loss{% else %}result-neutral{% endif %}">{{ ring.last_completed.comp_2_result }}</span>
                     <font style="color: #eb2525; font-weight: bold;">{{ ring.last_completed.comp_2 }}</font>
                 </span>
                 <span class="status-completed">{{ ring.last_completed.status }}</span>
@@ -598,7 +597,7 @@ def ui_public_rings():
             {% for match in ring.matches %}
             <strong>{{ match.match_number }}</strong> - <a href="/ui/divisions/{{ match.division.id }}/bracket">{{ match.division.name }}</a> ({{ match.round_short }})
             <div class="match-item">
-                <span><font style="color: #252ceb; font-weight: bold;">{{ match.comp_1 }}</font> vs<wbr> <font style="color: #eb2525; font-weight: bold;">{{ match.comp_2 }}</font></span>
+                <span class="match-competitors"><font style="color: #252ceb; font-weight: bold;">{{ match.comp_1 }}</font> vs <font style="color: #eb2525; font-weight: bold;">{{ match.comp_2 }}</font></span>
                 <span class="{% if match.status == 'In Progress' %}status-in-progress{% else %}status-pending{% endif %}">
                     {{ match.status }}
                 </span>
