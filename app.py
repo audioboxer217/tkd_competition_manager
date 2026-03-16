@@ -441,7 +441,7 @@ def _abbrev_round(round_name):
     """Return a short display label for a round name.
 
     'Final' -> 'F', 'Semi-Final' -> 'SF', 'Quarter-Final' -> 'QF',
-    'Round N' -> 'RN'.  Any unrecognised value is returned unchanged.
+    'Round of N' -> 'R{N}'.  Any unrecognised value is returned unchanged.
     """
     if round_name == "Final":
         return "F"
@@ -449,8 +449,8 @@ def _abbrev_round(round_name):
         return "SF"
     if round_name == "Quarter-Final":
         return "QF"
-    if round_name and round_name.startswith("Round "):
-        return "R" + round_name[6:]
+    if round_name and round_name.startswith("Round of"):
+        return "R" + round_name[8:]
     return round_name
 
 
