@@ -222,6 +222,16 @@
         {% include 'scorekeeper_matches_fragment.html' %}
     </div>
 
+    {% if event_type == 'poomsae' %}
+    <div id="poomsae-divisions-container"
+         hx-get="/ui/rings/{{ ring.id }}/poomsae_divisions"
+         hx-trigger="load"
+         hx-swap="innerHTML"
+         style="margin-top: 20px;">
+        <p style="text-align: center; color: #64748b;">Loading poomsae divisions&hellip;</p>
+    </div>
+    {% endif %}
+
     {% include '_confirm_modal.html' %}
 
     <script>

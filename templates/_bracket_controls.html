@@ -1,4 +1,40 @@
-{% if division.matches %}
+{% if division.event_type == 'poomsae' %}
+<h4 style="margin-top: 0; margin-bottom: 12px; color: #0f172a;">Ring Assignment</h4>
+<form hx-patch="/ui/divisions/{{ division.id }}/ring_assignment"
+      hx-target="#bracket-controls" hx-swap="innerHTML">
+    <div style="margin-bottom: 10px;">
+        <label style="font-size: 0.9rem; color: #475569; display: block; margin-bottom: 4px;">Ring</label>
+        <select name="ring_id" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 0.95rem;">
+            <option value="">Unassigned</option>
+            {% for ring in rings %}
+            <option value="{{ ring.id }}" {% if division.ring_id == ring.id %}selected{% endif %}>{{ ring.name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div style="margin-bottom: 12px;">
+        <label style="font-size: 0.9rem; color: #475569; display: block; margin-bottom: 4px;">Status</label>
+        <select name="event_status" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 0.95rem;">
+            {% for status in ['Pending', 'In Progress', 'Completed'] %}
+            <option value="{{ status }}" {% if division.event_status == status %}selected{% endif %}>{{ status }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <button type="submit" style="background: #2563eb; width: 100%;">Save Assignment</button>
+</form>
+{% if division.ring_id %}
+<div style="margin-top: 10px; padding: 8px 12px; background: #dbeafe; border-radius: 4px; font-size: 0.9rem;">
+    <strong>Assigned</strong> &mdash; Status: <strong>{{ division.event_status }}</strong>
+</div>
+{% endif %}
+{% if division.competitors %}
+<a href="/admin/divisions/{{ division.id }}/poomsae_results"
+   style="display: inline-block; background: #059669; color: white; padding: 8px 16px; text-decoration: none; border-radius: 4px; margin-top: 15px; width: 100%; box-sizing: border-box; text-align: center;">
+    Record Scores &amp; View Results
+</a>
+{% else %}
+<p style="font-size: 0.9rem; color: #64748b; margin-top: 15px;">Add competitors above to enable score recording.</p>
+{% endif %}
+{% elif division.matches %}
 <div style="padding: 15px; background: #d1fae5; border-radius: 4px; margin-bottom: 10px;">
     <a href="/admin/divisions/{{ division.id }}/bracket_manage"
         style="display: inline-block; background: #059669; color: white; padding: 8px 16px; text-decoration: none; border-radius: 4px;">
