@@ -69,6 +69,8 @@ class Division(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)  # e.g., 'Male - Black Belt - Under 70kg'
     event_type = db.Column(db.String(20), nullable=False, default="kyorugi")  # 'poomsae' or 'kyorugi'
+    ring_id = db.Column(db.Integer, db.ForeignKey("ring.id"), nullable=True)  # For poomsae: which ring is hosting this event
+    event_status = db.Column(db.String(20), nullable=False, default="Pending")  # For poomsae: 'Pending', 'In Progress', 'Completed'
     competitors = db.relationship("Competitor", backref="division", lazy=True)
     matches = db.relationship("Match", backref="division", lazy=True)
 
@@ -101,6 +103,19 @@ class Match(db.Model):
     competitor1 = db.relationship("Competitor", foreign_keys=[competitor1_id])
     competitor2 = db.relationship("Competitor", foreign_keys=[competitor2_id])
     winner = db.relationship("Competitor", foreign_keys=[winner_id])
+
+
+class Score(db.Model):
+    """Poomsae score for an individual competitor in a division."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    competitor_id = db.Column(db.Integer, db.ForeignKey("competitor.id"), nullable=False)
+    division_id = db.Column(db.Integer, db.ForeignKey("division.id"), nullable=False)
+    score_value = db.Column(db.Float, nullable=False)
+
+    competitor = db.relationship("Competitor", foreign_keys=[competitor_id])
+
+    __table_args__ = (db.UniqueConstraint("competitor_id", "division_id", name="uq_score_competitor_division"),)
 
 
 # --- RING MANAGEMENT ---
@@ -639,6 +654,14 @@ def ui_public_rings():
 
         ring_data.append({"name": ring.name, "last_completed": last_completed, "matches": matches})
 
+        # For poomsae tab: also fetch poomsae divisions assigned directly to this ring
+        if event_type == "poomsae":
+            ring_data[-1]["poomsae_divisions"] = Division.query.filter_by(
+                ring_id=ring.id, event_type="poomsae"
+            ).order_by(Division.name).all()
+        else:
+            ring_data[-1]["poomsae_divisions"] = []
+
     html = """
     {% for ring in rings %}
     <div class="ring-card">
@@ -654,7 +677,7 @@ def ui_public_rings():
             </div>
         {% endif %}
         {% if not ring.matches %}
-            {% if not ring.last_completed %}
+            {% if not ring.last_completed and not ring.poomsae_divisions %}
                 <p style="color: #94a3b8;">No upcoming matches.</p>
             {% endif %}
         {% else %}
@@ -668,6 +691,16 @@ def ui_public_rings():
             </div>
             {% endfor %}
         {% endif %}
+        {% for division in ring.poomsae_divisions %}
+        <a href="/admin/divisions/{{ division.id }}/poomsae_results" style="text-decoration: none; color: inherit;">
+            <div class="match-item" style="cursor: pointer;">
+                <span style="font-weight: 600;">{{ division.name }}</span>
+                <span class="{% if division.event_status == 'In Progress' %}status-in-progress{% elif division.event_status == 'Completed' %}status-completed{% else %}status-pending{% endif %}">
+                    {{ division.event_status }}
+                </span>
+            </div>
+        </a>
+        {% endfor %}
     </div>
     {% endfor %}
     """
@@ -694,7 +727,10 @@ def ui_results_divisions():
     for division in divisions:
         matches = matches_by_division[division.id]
         if not matches:
-            status = "No bracket"
+            if division.event_type == "poomsae":
+                status = division.event_status
+            else:
+                status = "No bracket"
         elif all(m.status in COMPLETED_MATCH_STATUSES for m in matches):
             status = "Completed"
         elif any(m.status in COMPLETED_MATCH_STATUSES or m.status == "In Progress" for m in matches):
@@ -837,7 +873,8 @@ def ui_divisions_list():
 def ui_delete_division(div_id):
     div = Division.query.get_or_404(div_id)
 
-    # Optional: Delete all associated matches and competitors first to maintain database integrity
+    # Delete all associated scores, matches and competitors first to maintain database integrity
+    Score.query.filter_by(division_id=div_id).delete()
     Match.query.filter_by(division_id=div_id).delete()
     Competitor.query.filter_by(division_id=div_id).delete()
 
@@ -883,7 +920,8 @@ def ui_competitors_list(div_id):
 @login_required
 def ui_bracket_controls(div_id):
     division = Division.query.get_or_404(div_id)
-    return render_template("_bracket_controls.html", division=division)
+    rings = Ring.query.all()
+    return render_template("_bracket_controls.html", division=division, rings=rings)
 
 
 @app.route("/ui/divisions/<int:div_id>/competitors/<int:comp_id>", methods=["DELETE"])
@@ -894,6 +932,7 @@ def ui_delete_competitor(div_id, comp_id):
         return "Not found", 404
     # Clear any existing bracket matches so FK constraints are not violated and
     # the user is required to regenerate the bracket after the roster change.
+    Score.query.filter_by(competitor_id=comp_id).delete()
     Match.query.filter_by(division_id=div_id).delete()
     db.session.delete(comp)
     db.session.commit()
@@ -1174,6 +1213,125 @@ def ui_record_result(match_id):
             f'<div id="result-notification" hx-swap-oob="innerHTML">{notification_html}</div>'
             f'<div id="matches-container" hx-swap-oob="innerHTML">{matches_html}</div>'
         )
+
+
+# --- POOMSAE ROUTES ---
+
+def _poomsae_results_fragment_html(div_id):
+    """Return the ranked scores table with score-entry forms for a poomsae division."""
+    division = Division.query.get_or_404(div_id)
+    competitors = Competitor.query.filter_by(division_id=div_id).order_by(Competitor.position).all()
+    scores_by_comp = {
+        s.competitor_id: s
+        for s in Score.query.filter_by(division_id=div_id).all()
+    }
+
+    # Build ranked list: scored competitors first (desc score), then unscored
+    scored = sorted(
+        [c for c in competitors if c.id in scores_by_comp],
+        key=lambda c: scores_by_comp[c.id].score_value,
+        reverse=True,
+    )
+    unscored = [c for c in competitors if c.id not in scores_by_comp]
+    ranked = [(c, scores_by_comp.get(c.id)) for c in scored + unscored]
+
+    return render_template(
+        "poomsae_results_fragment.html",
+        division=division,
+        ranked=ranked,
+    )
+
+
+@app.route("/ui/divisions/<int:div_id>/ring_assignment", methods=["PATCH"])
+@login_required
+def ui_poomsae_ring_assignment(div_id):
+    """Assign a poomsae division to a ring and update its event status."""
+    division = Division.query.get_or_404(div_id)
+    ring_id = request.form.get("ring_id")
+    event_status = request.form.get("event_status", "Pending")
+
+    if ring_id:
+        Ring.query.get_or_404(int(ring_id))  # validate ring exists
+        division.ring_id = int(ring_id)
+    else:
+        division.ring_id = None
+    division.event_status = event_status
+    db.session.commit()
+
+    rings = Ring.query.all()
+    return render_template("_bracket_controls.html", division=division, rings=rings)
+
+
+@app.route("/ui/divisions/<int:div_id>/competitors/<int:comp_id>/score", methods=["POST"])
+@login_required
+def ui_record_poomsae_score(div_id, comp_id):
+    """Record or update a poomsae score for a single competitor."""
+    Division.query.get_or_404(div_id)
+    competitor = Competitor.query.get_or_404(comp_id)
+    if competitor.division_id != div_id:
+        return "Not found", 404
+
+    try:
+        score_value = float(request.form.get("score_value", ""))
+    except (ValueError, TypeError):
+        return "Invalid score value.", 400
+
+    score = Score.query.filter_by(competitor_id=comp_id, division_id=div_id).first()
+    if score:
+        score.score_value = score_value
+    else:
+        score = Score(competitor_id=comp_id, division_id=div_id, score_value=score_value)
+        db.session.add(score)
+    db.session.commit()
+
+    return _poomsae_results_fragment_html(div_id)
+
+
+@app.route("/ui/divisions/<int:div_id>/poomsae_results_fragment")
+def ui_poomsae_results_fragment(div_id):
+    """HTMX fragment: ranked poomsae results with score-entry forms."""
+    return _poomsae_results_fragment_html(div_id)
+
+
+@app.route("/admin/divisions/<int:div_id>/poomsae_results")
+def poomsae_results_page(div_id):
+    """Full poomsae results page showing rankings and score entry."""
+    division = Division.query.get_or_404(div_id)
+    return render_template("poomsae_results.html", division=division)
+
+
+@app.route("/ui/rings/<int:ring_id>/poomsae_divisions")
+@login_required
+def ui_ring_poomsae_divisions(ring_id):
+    """HTMX fragment: poomsae divisions assigned to a ring with score-entry forms (for scorekeeper)."""
+    Ring.query.get_or_404(ring_id)
+    divisions = Division.query.filter_by(ring_id=ring_id, event_type="poomsae").order_by(Division.name).all()
+    if not divisions:
+        return '<div class="empty-state">No poomsae divisions assigned to this ring.</div>'
+
+    parts = []
+    for division in divisions:
+        competitors = Competitor.query.filter_by(division_id=division.id).order_by(Competitor.position).all()
+        scores_by_comp = {
+            s.competitor_id: s
+            for s in Score.query.filter_by(division_id=division.id).all()
+        }
+        scored = sorted(
+            [c for c in competitors if c.id in scores_by_comp],
+            key=lambda c: scores_by_comp[c.id].score_value,
+            reverse=True,
+        )
+        unscored = [c for c in competitors if c.id not in scores_by_comp]
+        ranked = [(c, scores_by_comp.get(c.id)) for c in scored + unscored]
+        parts.append(
+            render_template(
+                "poomsae_results_fragment.html",
+                division=division,
+                ranked=ranked,
+                scorekeeper_mode=True,
+            )
+        )
+    return "\n".join(parts)
 
 
 # Initialize DB for testing

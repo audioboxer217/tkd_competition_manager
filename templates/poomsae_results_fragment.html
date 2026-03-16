@@ -1,0 +1,57 @@
+<div id="poomsae-scores-{{ division.id }}"{% if scorekeeper_mode is defined and scorekeeper_mode %} class="match-card"{% endif %}>
+    {% if scorekeeper_mode is defined and scorekeeper_mode %}
+    <div class="match-info">
+        <strong>{{ division.name }}</strong>
+        <span class="{% if division.event_status == 'In Progress' %}status-in-progress{% elif division.event_status == 'Completed' %}status-completed{% else %}status-pending{% endif %}"
+              style="margin-left: 8px; font-size: 0.85rem;">{{ division.event_status }}</span>
+    </div>
+    {% endif %}
+    {% if not ranked %}
+    <p style="color: #94a3b8; font-style: italic; padding: 8px 0;">No competitors added yet.</p>
+    {% else %}
+    <table style="width: 100%; border-collapse: collapse; font-size: 0.95rem;">
+        <thead>
+            <tr style="background: #1e293b; color: white;">
+                <th style="padding: 8px 12px; text-align: center; width: 50px;">Rank</th>
+                <th style="padding: 8px 12px; text-align: left;">Competitor</th>
+                <th style="padding: 8px 12px; text-align: center; width: 100px;">Score</th>
+                <th style="padding: 8px 12px; text-align: center; width: 130px;">Update Score</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for competitor, score in ranked %}
+            {% set loop_index = loop.index %}
+            {% set has_score = score is not none %}
+            <tr style="{% if has_score %}{% if loop_index == 1 %}background: #fef9c3;{% elif loop_index == 2 %}background: #f1f5f9;{% elif loop_index == 3 %}background: #fff7ed;{% endif %}{% endif %} border-bottom: 1px solid #e2e8f0;">
+                <td style="padding: 8px 12px; text-align: center; font-weight: bold;">
+                    {% if has_score %}
+                        {% if loop_index == 1 %}🥇{% elif loop_index == 2 %}🥈{% elif loop_index == 3 %}🥉{% else %}{{ loop_index }}{% endif %}
+                    {% else %}
+                        <span style="color: #94a3b8;">—</span>
+                    {% endif %}
+                </td>
+                <td style="padding: 8px 12px;">{{ competitor.name }}</td>
+                <td style="padding: 8px 12px; text-align: center; font-weight: {% if has_score %}bold{% else %}normal{% endif %}; color: {% if has_score %}#0f172a{% else %}#94a3b8{% endif %};">
+                    {% if has_score %}{{ "%.3f"|format(score.score_value) }}{% else %}—{% endif %}
+                </td>
+                <td style="padding: 6px 12px; text-align: center;">
+                    <form hx-post="/ui/divisions/{{ division.id }}/competitors/{{ competitor.id }}/score"
+                          hx-target="#poomsae-scores-{{ division.id }}" hx-swap="innerHTML"
+                          style="display: flex; gap: 4px; justify-content: center; align-items: center;">
+                        <input type="number" name="score_value" step="0.001" min="0"
+                               value="{{ "%.3f"|format(score.score_value) if has_score else '' }}"
+                               placeholder="0.000"
+                               required
+                               style="width: 72px; padding: 4px 6px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 0.85rem;">
+                        <button type="submit"
+                                style="background: #10b981; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; white-space: nowrap;">
+                            Save
+                        </button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+</div>

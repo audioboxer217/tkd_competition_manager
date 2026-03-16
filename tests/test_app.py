@@ -1878,3 +1878,432 @@ class TestBracketDisplayLayout:
         left = titles[:final_idx]
         right = titles[final_idx + 1:]
         assert left == list(reversed(right))
+
+
+# ---------------------------------------------------------------------------
+# Poomsae Non-Bracket Event Support
+# ---------------------------------------------------------------------------
+
+
+class TestPoomsaeRingAssignment:
+    """Tests for assigning a poomsae division to a ring (PATCH /ui/divisions/<id>/ring_assignment)."""
+
+    def test_poomsae_ring_assignment_saves(self, client):
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_id = _create_division(client, "World Class Poomsae", "poomsae").get_json()["id"]
+
+        resp = client.patch(
+            f"/ui/divisions/{div_id}/ring_assignment",
+            data={"ring_id": str(ring_id), "event_status": "In Progress"},
+        )
+        assert resp.status_code == 200
+
+        from app import Division, db
+        div = db.session.get(Division, div_id)
+        assert div.ring_id == ring_id
+        assert div.event_status == "In Progress"
+
+    def test_poomsae_ring_assignment_unassign(self, client):
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+
+        client.patch(
+            f"/ui/divisions/{div_id}/ring_assignment",
+            data={"ring_id": str(ring_id), "event_status": "In Progress"},
+        )
+
+        resp = client.patch(
+            f"/ui/divisions/{div_id}/ring_assignment",
+            data={"ring_id": "", "event_status": "Pending"},
+        )
+        assert resp.status_code == 200
+
+        from app import Division, db
+        div = db.session.get(Division, div_id)
+        assert div.ring_id is None
+        assert div.event_status == "Pending"
+
+    def test_poomsae_ring_assignment_invalid_ring(self, client):
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+
+        resp = client.patch(
+            f"/ui/divisions/{div_id}/ring_assignment",
+            data={"ring_id": "9999", "event_status": "Pending"},
+        )
+        assert resp.status_code == 404
+
+    def test_poomsae_ring_assignment_not_found(self, client):
+        resp = client.patch(
+            "/ui/divisions/9999/ring_assignment",
+            data={"ring_id": "", "event_status": "Pending"},
+        )
+        assert resp.status_code == 404
+
+    def test_poomsae_ring_assignment_returns_controls_fragment(self, client):
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+
+        resp = client.patch(
+            f"/ui/divisions/{div_id}/ring_assignment",
+            data={"ring_id": str(ring_id), "event_status": "In Progress"},
+        )
+        assert resp.status_code == 200
+        assert b"Save Assignment" in resp.data
+
+    def test_poomsae_bracket_controls_shows_ring_form(self, client):
+        _create_ring(client, "Ring 1")
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+
+        resp = client.get(f"/ui/divisions/{div_id}/bracket_controls")
+        assert resp.status_code == 200
+        assert b"Ring Assignment" in resp.data
+        assert b"Save Assignment" in resp.data
+
+    def test_kyorugi_bracket_controls_unchanged(self, client):
+        div_id = _create_division(client, "Kyorugi Div", "kyorugi").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+
+        resp = client.get(f"/ui/divisions/{div_id}/bracket_controls")
+        assert resp.status_code == 200
+        assert b"Generate Bracket" in resp.data
+        assert b"Ring Assignment" not in resp.data
+
+    def test_poomsae_bracket_controls_shows_scores_link_when_competitors(self, client):
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+
+        resp = client.get(f"/ui/divisions/{div_id}/bracket_controls")
+        assert resp.status_code == 200
+        assert b"Record Scores" in resp.data
+
+    def test_poomsae_bracket_controls_no_scores_link_without_competitors(self, client):
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+
+        resp = client.get(f"/ui/divisions/{div_id}/bracket_controls")
+        assert resp.status_code == 200
+        assert b"Record Scores" not in resp.data
+
+
+class TestPoomsaeScoreRecording:
+    """Tests for recording poomsae scores (POST /ui/divisions/<id>/competitors/<id>/score)."""
+
+    def test_record_score(self, client):
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice"])
+
+        from app import Competitor, Score, db
+        comp = Competitor.query.filter_by(division_id=div_id).first()
+
+        resp = client.post(
+            f"/ui/divisions/{div_id}/competitors/{comp.id}/score",
+            data={"score_value": "8.500"},
+        )
+        assert resp.status_code == 200
+
+        score = Score.query.filter_by(competitor_id=comp.id, division_id=div_id).first()
+        assert score is not None
+        assert abs(score.score_value - 8.5) < 0.001
+
+    def test_update_score(self, client):
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice"])
+
+        from app import Competitor, Score, db
+        comp = Competitor.query.filter_by(division_id=div_id).first()
+
+        client.post(
+            f"/ui/divisions/{div_id}/competitors/{comp.id}/score",
+            data={"score_value": "8.000"},
+        )
+        client.post(
+            f"/ui/divisions/{div_id}/competitors/{comp.id}/score",
+            data={"score_value": "9.250"},
+        )
+
+        scores = Score.query.filter_by(competitor_id=comp.id, division_id=div_id).all()
+        assert len(scores) == 1
+        assert abs(scores[0].score_value - 9.25) < 0.001
+
+    def test_record_score_invalid_value(self, client):
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice"])
+
+        from app import Competitor
+        comp = Competitor.query.filter_by(division_id=div_id).first()
+
+        resp = client.post(
+            f"/ui/divisions/{div_id}/competitors/{comp.id}/score",
+            data={"score_value": "not-a-number"},
+        )
+        assert resp.status_code == 400
+
+    def test_record_score_wrong_division(self, client):
+        div_id1 = _create_division(client, "Poomsae Div 1", "poomsae").get_json()["id"]
+        div_id2 = _create_division(client, "Poomsae Div 2", "poomsae").get_json()["id"]
+        _add_competitors(client, div_id1, ["Alice"])
+
+        from app import Competitor
+        comp = Competitor.query.filter_by(division_id=div_id1).first()
+
+        resp = client.post(
+            f"/ui/divisions/{div_id2}/competitors/{comp.id}/score",
+            data={"score_value": "8.0"},
+        )
+        assert resp.status_code == 404
+
+    def test_record_score_not_found_competitor(self, client):
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+
+        resp = client.post(
+            f"/ui/divisions/{div_id}/competitors/9999/score",
+            data={"score_value": "8.0"},
+        )
+        assert resp.status_code == 404
+
+    def test_score_response_shows_ranked_table(self, client):
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+
+        from app import Competitor
+        comps = Competitor.query.filter_by(division_id=div_id).all()
+        comp_a = next(c for c in comps if c.name == "Alice")
+        comp_b = next(c for c in comps if c.name == "Bob")
+
+        client.post(f"/ui/divisions/{div_id}/competitors/{comp_a.id}/score", data={"score_value": "9.0"})
+        resp = client.post(
+            f"/ui/divisions/{div_id}/competitors/{comp_b.id}/score",
+            data={"score_value": "8.5"},
+        )
+        assert resp.status_code == 200
+        # Alice (9.0) should rank above Bob (8.5)
+        html = resp.data.decode()
+        alice_pos = html.find("Alice")
+        bob_pos = html.find("Bob")
+        assert alice_pos < bob_pos
+
+    def test_delete_competitor_removes_score(self, client):
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+
+        from app import Competitor, Score, db
+        comp = Competitor.query.filter_by(division_id=div_id, name="Alice").first()
+
+        client.post(
+            f"/ui/divisions/{div_id}/competitors/{comp.id}/score",
+            data={"score_value": "9.0"},
+        )
+        assert Score.query.filter_by(competitor_id=comp.id).count() == 1
+
+        client.delete(f"/ui/divisions/{div_id}/competitors/{comp.id}")
+        db.session.expire_all()
+        assert Score.query.filter_by(competitor_id=comp.id).count() == 0
+
+    def test_delete_division_removes_scores(self, client):
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice"])
+
+        from app import Competitor, Score, db
+        comp = Competitor.query.filter_by(division_id=div_id).first()
+        client.post(
+            f"/ui/divisions/{div_id}/competitors/{comp.id}/score",
+            data={"score_value": "9.0"},
+        )
+        assert Score.query.filter_by(division_id=div_id).count() == 1
+
+        client.delete(f"/ui/divisions/{div_id}")
+        db.session.expire_all()
+        assert Score.query.filter_by(division_id=div_id).count() == 0
+
+
+class TestPoomsaeResultsPage:
+    """Tests for the poomsae results page and fragment."""
+
+    def test_poomsae_results_page(self, client):
+        div_id = _create_division(client, "World Class Poomsae", "poomsae").get_json()["id"]
+
+        resp = client.get(f"/admin/divisions/{div_id}/poomsae_results")
+        assert resp.status_code == 200
+        assert b"World Class Poomsae" in resp.data
+
+    def test_poomsae_results_page_not_found(self, client):
+        resp = client.get("/admin/divisions/9999/poomsae_results")
+        assert resp.status_code == 404
+
+    def test_poomsae_results_fragment_empty(self, client):
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+
+        resp = client.get(f"/ui/divisions/{div_id}/poomsae_results_fragment")
+        assert resp.status_code == 200
+
+    def test_poomsae_results_fragment_shows_competitors(self, client):
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+
+        resp = client.get(f"/ui/divisions/{div_id}/poomsae_results_fragment")
+        assert resp.status_code == 200
+        assert b"Alice" in resp.data
+        assert b"Bob" in resp.data
+
+    def test_poomsae_results_fragment_ranked_by_score(self, client):
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob", "Carol"])
+
+        from app import Competitor
+        comps = {c.name: c for c in Competitor.query.filter_by(division_id=div_id).all()}
+
+        client.post(f"/ui/divisions/{div_id}/competitors/{comps['Alice'].id}/score", data={"score_value": "7.0"})
+        client.post(f"/ui/divisions/{div_id}/competitors/{comps['Bob'].id}/score", data={"score_value": "9.5"})
+        client.post(f"/ui/divisions/{div_id}/competitors/{comps['Carol'].id}/score", data={"score_value": "8.5"})
+
+        resp = client.get(f"/ui/divisions/{div_id}/poomsae_results_fragment")
+        html = resp.data.decode()
+
+        bob_pos = html.find("Bob")
+        carol_pos = html.find("Carol")
+        alice_pos = html.find("Alice")
+        assert bob_pos < carol_pos < alice_pos
+
+    def test_poomsae_results_fragment_medals(self, client):
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob", "Carol"])
+
+        from app import Competitor
+        comps = {c.name: c for c in Competitor.query.filter_by(division_id=div_id).all()}
+
+        client.post(f"/ui/divisions/{div_id}/competitors/{comps['Alice'].id}/score", data={"score_value": "9.0"})
+        client.post(f"/ui/divisions/{div_id}/competitors/{comps['Bob'].id}/score", data={"score_value": "8.0"})
+        client.post(f"/ui/divisions/{div_id}/competitors/{comps['Carol'].id}/score", data={"score_value": "7.0"})
+
+        resp = client.get(f"/ui/divisions/{div_id}/poomsae_results_fragment")
+        assert b"\xf0\x9f\xa5\x87" in resp.data  # 🥇
+        assert b"\xf0\x9f\xa5\x88" in resp.data  # 🥈
+        assert b"\xf0\x9f\xa5\x89" in resp.data  # 🥉
+
+    def test_results_divisions_poomsae_links_to_poomsae_results(self, client):
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+
+        resp = client.get("/ui/results_divisions?event_type=poomsae")
+        assert resp.status_code == 200
+        assert f"/admin/divisions/{div_id}/poomsae_results".encode() in resp.data
+
+    def test_results_divisions_kyorugi_still_links_to_bracket(self, client):
+        div_id = _create_division(client, "Kyorugi Div", "kyorugi").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _generate_bracket(client, div_id)
+
+        resp = client.get("/ui/results_divisions?event_type=kyorugi")
+        assert resp.status_code == 200
+        assert f"/ui/divisions/{div_id}/bracket".encode() in resp.data
+
+    def test_results_divisions_poomsae_status_uses_event_status(self, client):
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+
+        # Default status should be Pending
+        resp = client.get("/ui/results_divisions?event_type=poomsae")
+        assert b"Pending" in resp.data
+
+        # After assigning to ring as In Progress
+        client.patch(
+            f"/ui/divisions/{div_id}/ring_assignment",
+            data={"ring_id": str(ring_id), "event_status": "In Progress"},
+        )
+        resp = client.get("/ui/results_divisions?event_type=poomsae")
+        assert b"In Progress" in resp.data
+
+
+class TestPoomsaePublicRings:
+    """Tests for the public rings live view with poomsae division assignments."""
+
+    def test_poomsae_divisions_appear_on_assigned_ring(self, client):
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_id = _create_division(client, "World Class Poomsae", "poomsae").get_json()["id"]
+
+        client.patch(
+            f"/ui/divisions/{div_id}/ring_assignment",
+            data={"ring_id": str(ring_id), "event_status": "In Progress"},
+        )
+
+        resp = client.get("/ui/public_rings?event_type=poomsae")
+        assert resp.status_code == 200
+        assert b"World Class Poomsae" in resp.data
+        assert b"In Progress" in resp.data
+
+    def test_poomsae_division_not_shown_when_unassigned(self, client):
+        _create_ring(client, "Ring 1")
+        _create_division(client, "Unassigned Poomsae", "poomsae")
+
+        resp = client.get("/ui/public_rings?event_type=poomsae")
+        assert resp.status_code == 200
+        assert b"Unassigned Poomsae" not in resp.data
+
+    def test_poomsae_division_not_shown_in_kyorugi_view(self, client):
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_id = _create_division(client, "World Class Poomsae", "poomsae").get_json()["id"]
+
+        client.patch(
+            f"/ui/divisions/{div_id}/ring_assignment",
+            data={"ring_id": str(ring_id), "event_status": "In Progress"},
+        )
+
+        resp = client.get("/ui/public_rings?event_type=kyorugi")
+        assert resp.status_code == 200
+        assert b"World Class Poomsae" not in resp.data
+
+    def test_poomsae_division_links_to_results_in_live_view(self, client):
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+
+        client.patch(
+            f"/ui/divisions/{div_id}/ring_assignment",
+            data={"ring_id": str(ring_id), "event_status": "Pending"},
+        )
+
+        resp = client.get("/ui/public_rings?event_type=poomsae")
+        assert resp.status_code == 200
+        assert f"/admin/divisions/{div_id}/poomsae_results".encode() in resp.data
+
+
+class TestPoomsaeScorekeeperDivisions:
+    """Tests for the poomsae divisions section in the scorekeeper."""
+
+    def test_poomsae_divisions_fragment_empty(self, client):
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+
+        resp = client.get(f"/ui/rings/{ring_id}/poomsae_divisions")
+        assert resp.status_code == 200
+        assert b"No poomsae divisions" in resp.data
+
+    def test_poomsae_divisions_fragment_shows_assigned(self, client):
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_id = _create_division(client, "World Class Poomsae", "poomsae").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+
+        client.patch(
+            f"/ui/divisions/{div_id}/ring_assignment",
+            data={"ring_id": str(ring_id), "event_status": "In Progress"},
+        )
+
+        resp = client.get(f"/ui/rings/{ring_id}/poomsae_divisions")
+        assert resp.status_code == 200
+        assert b"World Class Poomsae" in resp.data
+        assert b"Alice" in resp.data
+        assert b"Bob" in resp.data
+
+    def test_poomsae_scorekeeper_page_has_divisions_container(self, client):
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+
+        resp = client.get(f"/ring/{ring_id}/scorekeeper?event_type=poomsae")
+        assert resp.status_code == 200
+        assert b"poomsae-divisions-container" in resp.data
+
+    def test_kyorugi_scorekeeper_page_no_poomsae_container(self, client):
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+
+        resp = client.get(f"/ring/{ring_id}/scorekeeper?event_type=kyorugi")
+        assert resp.status_code == 200
+        assert b"poomsae-divisions-container" not in resp.data
+
+    def test_poomsae_divisions_fragment_not_found_ring(self, client):
+        resp = client.get("/ui/rings/9999/poomsae_divisions")
+        assert resp.status_code == 404
