@@ -1238,6 +1238,10 @@ class TestPageRoutes:
     def test_index(self, client):
         resp = client.get("/")
         assert resp.status_code == 200
+        assert b'name="viewport"' in resp.data
+        assert b'width=device-width' in resp.data
+        assert b'class="top-nav"' in resp.data
+        assert b'word-break: break-word' in resp.data
 
     def test_admin(self, client):
         resp = client.get("/admin")
@@ -1249,6 +1253,10 @@ class TestPageRoutes:
         assert resp.status_code == 200
         assert b'id="htmx-confirm-modal"' in resp.data
         assert b"htmx:confirm" in resp.data
+        assert b'name="viewport"' in resp.data
+        assert b'width=device-width' in resp.data
+        assert b'grid-template-columns: 1fr' in resp.data
+        assert b'@media (max-width: 600px)' in resp.data
 
     def test_admin_division_setup_not_found(self, client):
         resp = client.get("/admin/divisions/9999/setup")
