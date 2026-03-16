@@ -450,7 +450,7 @@ def _abbrev_round(round_name):
     if round_name == "Quarter-Final":
         return "QF"
     if round_name and round_name.startswith("Round of"):
-        return "R" + round_name[8:]
+        return "R" + round_name[9:]
     return round_name
 
 
