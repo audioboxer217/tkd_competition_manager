@@ -656,13 +656,28 @@ def ui_public_rings():
 
         ring_data.append({"name": ring.name, "last_completed": last_completed, "matches": matches})
 
-        # For poomsae tab: also fetch poomsae divisions assigned directly to this ring
+        # For poomsae tab: merge bracket matches and group divisions into a single
+        # interleaved list sorted by their common ring sequence number.
         if event_type == "poomsae":
-            ring_data[-1]["poomsae_divisions"] = Division.query.filter_by(
-                ring_id=ring.id, event_type="poomsae"
-            ).order_by(Division.name).all()
+            # Show group and un-configured poomsae divisions; bracket ones appear via matches.
+            group_divisions = Division.query.filter(
+                Division.ring_id == ring.id,
+                Division.event_type == "poomsae",
+                db.or_(Division.poomsae_style != "bracket", Division.poomsae_style.is_(None)),
+            ).all()
+            # Build unified items: (sequence, type, object)
+            poomsae_items = []
+            for m in matches:
+                seq = (m.match_number % 100) if m.match_number else None
+                poomsae_items.append({"seq": seq, "kind": "match", "obj": m})
+            for d in group_divisions:
+                poomsae_items.append({"seq": d.ring_sequence, "kind": "division", "obj": d})
+            poomsae_items.sort(key=lambda item: (item["seq"] is None, item["seq"] or 0))
+            ring_data[-1]["poomsae_items"] = poomsae_items
+            # Clear matches so the generic match loop in the template does not double-render them
+            ring_data[-1]["matches"] = []
         else:
-            ring_data[-1]["poomsae_divisions"] = []
+            ring_data[-1]["poomsae_items"] = []
 
     html = """
     {% for ring in rings %}
@@ -678,12 +693,12 @@ def ui_public_rings():
                 <span class="status-completed">{{ ring.last_completed.status }}</span>
             </div>
         {% endif %}
-        {% if not ring.matches %}
-            {% if not ring.last_completed and not ring.poomsae_divisions %}
+        {% if not ring.matches and not ring.poomsae_items %}
+            {% if not ring.last_completed %}
                 <p style="color: #94a3b8;">No upcoming matches.</p>
             {% endif %}
-        {% else %}
-            {% for match in ring.matches %}
+        {% endif %}
+        {% for match in ring.matches %}
             <strong>{{ match.match_number }}</strong> - <a href="/ui/divisions/{{ match.division.id }}/bracket">{{ match.division.name }}</a> ({{ match.round_short }})
             <div class="match-item">
                 <span class="match-competitors"><font style="color: #252ceb; font-weight: bold;">{{ match.comp_1 }}</font> vs <font style="color: #eb2525; font-weight: bold;">{{ match.comp_2 }}</font></span>
@@ -691,17 +706,28 @@ def ui_public_rings():
                     {{ match.status }}
                 </span>
             </div>
-            {% endfor %}
-        {% endif %}
-        {% for division in ring.poomsae_divisions %}
-        <a href="/admin/divisions/{{ division.id }}/poomsae_results" style="text-decoration: none; color: inherit;">
-            <div class="match-item" style="cursor: pointer;">
-                <span style="font-weight: 600;">{{ division.name }}</span>
-                <span class="{% if division.event_status == 'In Progress' %}status-in-progress{% elif division.event_status == 'Completed' %}status-completed{% else %}status-pending{% endif %}">
-                    {{ division.event_status }}
-                </span>
-            </div>
-        </a>
+        {% endfor %}
+        {% for item in ring.poomsae_items %}
+            {% if item.kind == 'match' %}
+                {% set match = item.obj %}
+                <strong>{{ match.match_number }}</strong> - <a href="/ui/divisions/{{ match.division.id }}/bracket">{{ match.division.name }}</a> ({{ match.round_short }})
+                <div class="match-item">
+                    <span class="match-competitors"><font style="color: #252ceb; font-weight: bold;">{{ match.comp_1 }}</font> vs <font style="color: #eb2525; font-weight: bold;">{{ match.comp_2 }}</font></span>
+                    <span class="{% if match.status == 'In Progress' %}status-in-progress{% else %}status-pending{% endif %}">
+                        {{ match.status }}
+                    </span>
+                </div>
+            {% else %}
+                {% set division = item.obj %}
+                <a href="/admin/divisions/{{ division.id }}/poomsae_results" style="text-decoration: none; color: inherit;">
+                    <div class="match-item" style="cursor: pointer;">
+                        <span style="font-weight: 600;">{{ division.name }}</span>
+                        <span class="{% if division.event_status == 'In Progress' %}status-in-progress{% elif division.event_status == 'Completed' %}status-completed{% else %}status-pending{% endif %}">
+                            {{ division.event_status }}
+                        </span>
+                    </div>
+                </a>
+            {% endif %}
         {% endfor %}
     </div>
     {% endfor %}
@@ -1036,13 +1062,28 @@ def schedule_match_htmx(match_id):
             )
             .first()
         )
-        if duplicate:
+        # Also check whether a group poomsae division already occupies this ring+sequence
+        # (group divisions share the 1-99 sequence pool with bracket matches)
+        conflicting_division = None
+        if event_type == "poomsae":
+            conflicting_division = Division.query.filter_by(
+                ring_id=ring_id_int,
+                ring_sequence=ring_sequence_int,
+                poomsae_style="group",
+            ).first()
+        if duplicate or conflicting_division:
             rings = Ring.query.all()
             ring_options = "".join(
                 [f'<option value="{r.id}" {"selected" if r.id == ring_id_int else ""}>{escape(r.name)}</option>' for r in rings]
             )
             chung_name = escape(match.competitor1.name) if match.competitor1 else "TBD"
             hong_name = escape(match.competitor2.name) if match.competitor2 else "TBD"
+            # Build a descriptive name for whatever is already using this slot
+            if conflicting_division:
+                conflict_name = escape(conflicting_division.name)
+            else:
+                # A bracket match from another division occupies this number
+                conflict_name = escape(duplicate.division.name)
             return f"""
     <div class="match-card" id="match-{match.id}">
         <div class="match-body">
@@ -1051,7 +1092,7 @@ def schedule_match_htmx(match_id):
         </div>
         <div class="schedule-form">
             <div style="margin-bottom: 8px; color: #dc2626; font-weight: bold;">
-                Error: Match {proposed_match_number} is already assigned to another match.
+                Error: Sequence {ring_sequence_int} is already used by "{conflict_name}" in this ring.
             </div>
             <form hx-put="/matches/{match.id}/schedule" hx-target="#match-{match.id}"
                         hx-swap="outerHTML" style="display: flex; gap: 5px;">
@@ -1302,6 +1343,35 @@ def ui_poomsae_ring_assignment(div_id):
             return "Invalid ring_sequence value.", 400
         if not (1 <= ring_sequence_int <= 99):
             return "ring_sequence must be between 1 and 99.", 400
+        # Check that no bracket match already occupies this ring+sequence slot.
+        # Bracket match_number encodes (ring_id * 100) + ring_sequence.
+        target_ring_id = division.ring_id  # already updated above
+        if target_ring_id is not None:
+            proposed_match_number = (target_ring_id * 100) + ring_sequence_int
+            conflicting_match = (
+                Match.query.join(Division)
+                .filter(
+                    Division.event_type == "poomsae",
+                    Match.ring_id == target_ring_id,
+                    Match.match_number == proposed_match_number,
+                )
+                .first()
+            )
+            # Also check another group division in the same ring (excluding this one)
+            conflicting_div = Division.query.filter(
+                Division.id != div_id,
+                Division.ring_id == target_ring_id,
+                Division.ring_sequence == ring_sequence_int,
+                Division.poomsae_style == "group",
+            ).first()
+            if conflicting_match or conflicting_div:
+                conflict_name = (
+                    escape(conflicting_match.division.name)
+                    if conflicting_match
+                    else escape(conflicting_div.name)
+                )
+                db.session.rollback()
+                return f"Sequence {ring_sequence_int} is already used by \"{conflict_name}\" in this ring.", 400
         division.ring_sequence = ring_sequence_int
     else:
         division.ring_sequence = None
