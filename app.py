@@ -1206,24 +1206,30 @@ def ui_record_result(match_id):
 
 # --- POOMSAE ROUTES ---
 
-def _poomsae_results_fragment_html(div_id):
-    """Return the ranked scores table with score-entry forms for a poomsae division."""
-    division = Division.query.get_or_404(div_id)
+def _build_poomsae_ranked(div_id):
+    """Return a list of (Competitor, Score|None) tuples for a division, ranked by score.
+
+    Scored competitors appear first (highest score first); unscored competitors
+    follow in their roster order.
+    """
     competitors = Competitor.query.filter_by(division_id=div_id).order_by(Competitor.position).all()
     scores_by_comp = {
         s.competitor_id: s
         for s in Score.query.filter_by(division_id=div_id).all()
     }
-
-    # Build ranked list: scored competitors first (desc score), then unscored
     scored = sorted(
         [c for c in competitors if c.id in scores_by_comp],
         key=lambda c: scores_by_comp[c.id].score_value,
         reverse=True,
     )
     unscored = [c for c in competitors if c.id not in scores_by_comp]
-    ranked = [(c, scores_by_comp.get(c.id)) for c in scored + unscored]
+    return [(c, scores_by_comp.get(c.id)) for c in scored + unscored]
 
+
+def _poomsae_results_fragment_html(div_id):
+    """Return the ranked scores table with score-entry forms for a poomsae division."""
+    division = Division.query.get_or_404(div_id)
+    ranked = _build_poomsae_ranked(div_id)
     return render_template(
         "poomsae_results_fragment.html",
         division=division,
@@ -1240,8 +1246,8 @@ def ui_poomsae_ring_assignment(div_id):
     event_status = request.form.get("event_status", "Pending")
 
     if ring_id:
-        Ring.query.get_or_404(int(ring_id))  # validate ring exists
-        division.ring_id = int(ring_id)
+        ring = Ring.query.get_or_404(int(ring_id))
+        division.ring_id = ring.id
     else:
         division.ring_id = None
     division.event_status = event_status
@@ -1300,18 +1306,7 @@ def ui_ring_poomsae_divisions(ring_id):
 
     parts = []
     for division in divisions:
-        competitors = Competitor.query.filter_by(division_id=division.id).order_by(Competitor.position).all()
-        scores_by_comp = {
-            s.competitor_id: s
-            for s in Score.query.filter_by(division_id=division.id).all()
-        }
-        scored = sorted(
-            [c for c in competitors if c.id in scores_by_comp],
-            key=lambda c: scores_by_comp[c.id].score_value,
-            reverse=True,
-        )
-        unscored = [c for c in competitors if c.id not in scores_by_comp]
-        ranked = [(c, scores_by_comp.get(c.id)) for c in scored + unscored]
+        ranked = _build_poomsae_ranked(division.id)
         parts.append(
             render_template(
                 "poomsae_results_fragment.html",

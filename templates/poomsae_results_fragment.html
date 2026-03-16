@@ -9,6 +9,13 @@
     {% if not ranked %}
     <p style="color: #94a3b8; font-style: italic; padding: 8px 0;">No competitors added yet.</p>
     {% else %}
+    <style>
+        .poomsae-row-gold   { background: #fef9c3; }
+        .poomsae-row-silver { background: #f1f5f9; }
+        .poomsae-row-bronze { background: #fff7ed; }
+        .poomsae-score-unset { color: #94a3b8; }
+        .poomsae-score-set   { font-weight: bold; color: #0f172a; }
+    </style>
     <table style="width: 100%; border-collapse: collapse; font-size: 0.95rem;">
         <thead>
             <tr style="background: #1e293b; color: white;">
@@ -22,16 +29,22 @@
             {% for competitor, score in ranked %}
             {% set loop_index = loop.index %}
             {% set has_score = score is not none %}
-            <tr style="{% if has_score %}{% if loop_index == 1 %}background: #fef9c3;{% elif loop_index == 2 %}background: #f1f5f9;{% elif loop_index == 3 %}background: #fff7ed;{% endif %}{% endif %} border-bottom: 1px solid #e2e8f0;">
+            {% if has_score %}
+                {% if loop_index == 1 %}{% set row_class = "poomsae-row-gold" %}
+                {% elif loop_index == 2 %}{% set row_class = "poomsae-row-silver" %}
+                {% elif loop_index == 3 %}{% set row_class = "poomsae-row-bronze" %}
+                {% else %}{% set row_class = "" %}{% endif %}
+            {% else %}{% set row_class = "" %}{% endif %}
+            <tr class="{{ row_class }}" style="border-bottom: 1px solid #e2e8f0;">
                 <td style="padding: 8px 12px; text-align: center; font-weight: bold;">
                     {% if has_score %}
                         {% if loop_index == 1 %}🥇{% elif loop_index == 2 %}🥈{% elif loop_index == 3 %}🥉{% else %}{{ loop_index }}{% endif %}
                     {% else %}
-                        <span style="color: #94a3b8;">—</span>
+                        <span class="poomsae-score-unset">—</span>
                     {% endif %}
                 </td>
                 <td style="padding: 8px 12px;">{{ competitor.name }}</td>
-                <td style="padding: 8px 12px; text-align: center; font-weight: {% if has_score %}bold{% else %}normal{% endif %}; color: {% if has_score %}#0f172a{% else %}#94a3b8{% endif %};">
+                <td class="{% if has_score %}poomsae-score-set{% else %}poomsae-score-unset{% endif %}" style="padding: 8px 12px; text-align: center;">
                     {% if has_score %}{{ "%.3f"|format(score.score_value) }}{% else %}—{% endif %}
                 </td>
                 <td style="padding: 6px 12px; text-align: center;">
