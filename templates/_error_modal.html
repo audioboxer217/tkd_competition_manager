@@ -1,0 +1,117 @@
+<style>
+    .htmx-error-modal {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    }
+
+    .htmx-error-modal[hidden] {
+        display: none;
+    }
+
+    .htmx-error-backdrop {
+        position: absolute;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.55);
+    }
+
+    .htmx-error-dialog {
+        position: relative;
+        width: min(92vw, 420px);
+        background: white;
+        border-radius: 10px;
+        box-shadow: 0 20px 40px rgba(15, 23, 42, 0.25);
+        padding: 20px;
+    }
+
+    .htmx-error-dialog h2 {
+        margin: 0 0 10px;
+        color: #0f172a;
+        font-size: 1.2rem;
+    }
+
+    .htmx-error-dialog p {
+        margin: 0;
+        color: #475569;
+        line-height: 1.5;
+    }
+
+    .htmx-error-actions {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 20px;
+    }
+
+    .htmx-error-ok {
+        border: none;
+        border-radius: 6px;
+        padding: 10px 16px;
+        font-size: 0.95rem;
+        cursor: pointer;
+        background: #2563eb;
+        color: white;
+    }
+
+    .htmx-error-ok:hover {
+        background: #1d4ed8;
+    }
+</style>
+
+<div id="htmx-error-modal" class="htmx-error-modal" hidden>
+    <div class="htmx-error-backdrop"></div>
+    <div class="htmx-error-dialog" role="dialog" aria-modal="true" aria-labelledby="htmx-error-title">
+        <h2 id="htmx-error-title">Match Already In Progress</h2>
+        <p id="htmx-error-message">Another match is already in progress on this ring. Please finish the current match by choosing a winner before starting a new one.</p>
+        <div class="htmx-error-actions">
+            <button id="htmx-error-ok" class="htmx-error-ok" type="button">OK</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    (function () {
+        if (window.tkdErrorModalInstalled) {
+            return;
+        }
+
+        window.tkdErrorModalInstalled = true;
+
+        const modal = document.getElementById('htmx-error-modal');
+        const okButton = document.getElementById('htmx-error-ok');
+
+        if (!modal || !okButton) {
+            return;
+        }
+
+        let lastFocusedElement = null;
+
+        function closeModal() {
+            modal.hidden = true;
+            if (lastFocusedElement) {
+                lastFocusedElement.focus();
+                lastFocusedElement = null;
+            }
+        }
+
+        function openModal() {
+            lastFocusedElement = document.activeElement;
+            modal.hidden = false;
+            okButton.focus();
+        }
+
+        okButton.addEventListener('click', closeModal);
+
+        document.addEventListener('keydown', function (event) {
+            if (event.key === 'Escape' && !modal.hidden) {
+                closeModal();
+            }
+        });
+
+        document.body.addEventListener('showInProgressError', function () {
+            openModal();
+        });
+    })();
+</script>
