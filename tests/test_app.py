@@ -1076,7 +1076,15 @@ class TestUIMatchResult:
         _add_competitors(client, div_id, ["Alice", "Bob", "Carol", "Dave"])
         _generate_bracket(client, div_id)
 
-        matches = Match.query.filter_by(division_id=div_id, status="Pending").all()
+        matches = (
+            Match.query.filter_by(division_id=div_id, status="Pending")
+            .filter(
+                (Match.competitor1_id.isnot(None) & Match.competitor2_id.isnot(None))
+                | (Match.round_name == "Semi-Final")
+            )
+            .order_by(Match.id)
+            .all()
+        )
         assert len(matches) >= 2
 
         # Schedule both matches to the same ring
