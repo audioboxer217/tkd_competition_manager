@@ -3,6 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Setup Division: {{ division.name }}</title>
     <script src="https://unpkg.com/htmx.org@1.9.6"></script>
     <style>
@@ -34,6 +35,22 @@
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 30px;
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                padding: 15px;
+            }
+
+            .header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+
+            .grid {
+                grid-template-columns: 1fr;
+            }
         }
 
         textarea {
@@ -117,11 +134,11 @@
 
     <div class="container">
         <div class="header">
-            <div id="division-name-header" style="display: flex; align-items: center;">
+            <div id="division-name-header" style="display: flex; align-items: center; flex-wrap: wrap; gap: 8px;">
                 <h1 style="margin: 0; color: #0f172a;">{{ division.name }}</h1>
                 <button hx-get="/ui/divisions/{{ division.id }}/name_form"
                         hx-target="#division-name-header" hx-swap="innerHTML"
-                        style="background: #64748b; padding: 5px 12px; width: auto; font-size: 0.85rem; margin-left: 12px;">
+                        style="background: #64748b; padding: 5px 12px; width: auto; font-size: 0.85rem;">
                     Rename
                 </button>
             </div>

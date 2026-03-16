@@ -3,6 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Tournament Live View</title>
     <script src="https://unpkg.com/htmx.org@1.9.6"></script>
     <style>
@@ -11,7 +12,6 @@
             background: #f8fafc;
             margin: 0;
             padding: 20px;
-            position: relative;
         }
 
         .header {
@@ -104,7 +104,7 @@
         }
 
         .match-competitors {
-            white-space: nowrap;
+            word-break: break-word;
         }
 
         .result-indicator {
@@ -141,10 +141,16 @@
             color: #64748b;
         }
 
+        .top-nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
         .btn-admin-login {
-            position: absolute;
-            top: 20px;
-            right: 20px;
             display: inline-block;
             background: #2563eb;
             color: white;
@@ -160,9 +166,6 @@
         }
 
         .btn-secondary {
-            position: absolute;
-            top: 20px;
-            left: 20px;
             display: inline-block;
             background: #e2e8f0;
             color: #475569;
@@ -183,8 +186,10 @@
 
 <body>
 
-    <a href="/login" class="btn-admin-login">Admin Login</a>
-    <a href="/results" class="btn-secondary">View Results</a>
+    <nav class="top-nav">
+        <a href="/results" class="btn-secondary">View Results</a>
+        <a href="/login" class="btn-admin-login">Admin Login</a>
+    </nav>
 
     <div class="header">
         <h1>Live Tournament Status</h1>
