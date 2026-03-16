@@ -44,8 +44,8 @@
         </select>
     </div>
     <div style="margin-bottom: 10px;">
-        <label style="font-size: 0.9rem; color: #475569; display: block; margin-bottom: 4px;">Ring Order <span style="color: #94a3b8; font-weight: normal;">(1 = first, 2 = second, …)</span></label>
-        <input type="number" name="ring_sequence" min="1"
+        <label style="font-size: 0.9rem; color: #475569; display: block; margin-bottom: 4px;">Ring Order <span style="color: #94a3b8; font-weight: normal;">(1–99, same pool as bracket match numbers)</span></label>
+        <input type="number" name="ring_sequence" min="1" max="99"
                value="{{ division.ring_sequence if division.ring_sequence is not none else '' }}"
                placeholder="e.g. 1"
                style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 0.95rem; box-sizing: border-box;">

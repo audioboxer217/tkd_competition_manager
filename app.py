@@ -1209,11 +1209,22 @@ def ui_record_result(match_id):
         )
 
         # Return main swap (removes match card) + OOB swaps for notification and
-        # refreshed matches list so other cards reflect any bracket advancement
+        # refreshed matches list so other cards reflect any bracket advancement.
+        # For poomsae, also refresh the unified poomsae container since it contains
+        # both bracket matches and group divisions interleaved.
+        is_poomsae = match.division.event_type == "poomsae"
+        oob_container_html = (
+            f'<div id="poomsae-divisions-container"'
+            f' hx-get="/ui/rings/{match.ring_id}/poomsae_divisions"'
+            f' hx-trigger="load" hx-swap="innerHTML"'
+            f' hx-swap-oob="outerHTML"></div>'
+            if is_poomsae
+            else f'<div id="matches-container" hx-swap-oob="innerHTML">{matches_html}</div>'
+        )
         return (
             f'<!-- match {match_number} completed -->'
             f'<div id="result-notification" hx-swap-oob="innerHTML">{notification_html}</div>'
-            f'<div id="matches-container" hx-swap-oob="innerHTML">{matches_html}</div>'
+            f'{oob_container_html}'
         )
 
 
@@ -1286,9 +1297,12 @@ def ui_poomsae_ring_assignment(div_id):
 
     if ring_sequence_raw.strip():
         try:
-            division.ring_sequence = int(ring_sequence_raw)
+            ring_sequence_int = int(ring_sequence_raw)
         except ValueError:
             return "Invalid ring_sequence value.", 400
+        if not (1 <= ring_sequence_int <= 99):
+            return "ring_sequence must be between 1 and 99.", 400
+        division.ring_sequence = ring_sequence_int
     else:
         division.ring_sequence = None
 
@@ -1374,26 +1388,52 @@ def poomsae_score_manage_page(div_id):
 @app.route("/ui/rings/<int:ring_id>/poomsae_divisions")
 @login_required
 def ui_ring_poomsae_divisions(ring_id):
-    """HTMX fragment: poomsae divisions assigned to a ring with score-entry forms (for scorekeeper)."""
+    """HTMX fragment: all poomsae items for a ring (bracket matches + group divisions), sorted
+    by their common ring sequence number so both types appear in the correct order together."""
     Ring.query.get_or_404(ring_id)
-    divisions = Division.query.filter_by(ring_id=ring_id, event_type="poomsae").all()
-    # Sort by ring_sequence (nulls last), then by name
-    divisions.sort(key=lambda d: (d.ring_sequence is None, d.ring_sequence or 0, d.name))
-    if not divisions:
+
+    # --- Bracket poomsae matches assigned to this ring (Pending or In Progress) ---
+    bracket_matches = (
+        Match.query.filter(
+            Match.ring_id == ring_id,
+            Match.division.has(event_type="poomsae"),
+            Match.status.in_(["Pending", "In Progress"]),
+        )
+        .order_by(Match.match_number)
+        .all()
+    )
+
+    # --- Group poomsae divisions assigned to this ring ---
+    group_divisions = Division.query.filter_by(ring_id=ring_id, event_type="poomsae", poomsae_style="group").all()
+
+    if not bracket_matches and not group_divisions:
         return '<div class="empty-state">No poomsae divisions assigned to this ring.</div>'
 
-    parts = []
-    for division in divisions:
+    # Build a unified list of (sequence, html) items so both types interleave correctly.
+    # Bracket match sequence = match_number % 100 (the sequence portion of ring_id*100 + seq).
+    # Group division sequence = division.ring_sequence (1-99, same pool). Nulls sort last.
+    items = []
+
+    for match in bracket_matches:
+        seq = (match.match_number % 100) if match.match_number else None
+        html = render_template("scorekeeper_match_card.html", match=match)
+        items.append((seq, html))
+
+    for division in group_divisions:
+        seq = division.ring_sequence  # 1-99 or None
         ranked = _build_poomsae_ranked(division.id)
-        parts.append(
-            render_template(
-                "poomsae_results_fragment.html",
-                division=division,
-                ranked=ranked,
-                scorekeeper_mode=True,
-            )
+        html = render_template(
+            "poomsae_results_fragment.html",
+            division=division,
+            ranked=ranked,
+            scorekeeper_mode=True,
         )
-    return "\n".join(parts)
+        items.append((seq, html))
+
+    # Sort: sequenced items first (ascending), unsequenced last
+    items.sort(key=lambda item: (item[0] is None, item[0] or 0))
+
+    return "\n".join(html for _, html in items)
 
 
 # Initialize DB for testing

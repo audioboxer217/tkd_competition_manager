@@ -253,17 +253,23 @@
             class="event-tab {{ 'active' if event_type == 'poomsae' else '' }}">Poomsae</a>
     </div>
     <div id="result-notification"></div>
-    <div id="matches-container">
-        {% include 'scorekeeper_matches_fragment.html' %}
-    </div>
 
     {% if event_type == 'poomsae' %}
+    {# For poomsae, bracket matches AND group divisions are shown together in
+       sequence-number order via the unified poomsae_divisions fragment.
+       The hidden matches-container div is kept in the DOM so that kyorugi-style
+       OOB swaps targeting it do not cause errors (though they are unused here). #}
+    <div id="matches-container" style="display:none;"></div>
     <div id="poomsae-divisions-container"
          hx-get="/ui/rings/{{ ring.id }}/poomsae_divisions"
          hx-trigger="load"
          hx-swap="innerHTML"
-         style="margin-top: 20px;">
+         style="margin-top: 0;">
         <p style="text-align: center; color: #64748b;">Loading poomsae divisions&hellip;</p>
+    </div>
+    {% else %}
+    <div id="matches-container">
+        {% include 'scorekeeper_matches_fragment.html' %}
     </div>
     {% endif %}
 

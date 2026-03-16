@@ -1605,6 +1605,7 @@ class TestEventTypes:
         _add_competitors(client, div_kyorugi, ["Alice", "Bob"])
         _add_competitors(client, div_poomsae, ["Carol", "Dave"])
         _generate_bracket(client, div_kyorugi)
+        _set_poomsae_style(client, div_poomsae, "bracket")
         _generate_bracket(client, div_poomsae)
 
         match_k = Match.query.filter_by(division_id=div_kyorugi).first()
@@ -1624,7 +1625,9 @@ class TestEventTypes:
         assert b"Kyorugi Division" in resp_k.data
         assert b"Poomsae Division" not in resp_k.data
 
-        resp_p = client.get(f"/ring/{ring_id}/scorekeeper?event_type=poomsae")
+        # For poomsae, the scorekeeper loads matches via HTMX. Verify the unified
+        # fragment endpoint directly contains the poomsae match, not the kyorugi one.
+        resp_p = client.get(f"/ui/rings/{ring_id}/poomsae_divisions")
         assert resp_p.status_code == 200
         assert b"Poomsae Division" in resp_p.data
         assert b"Kyorugi Division" not in resp_p.data
@@ -2079,6 +2082,10 @@ class TestPoomsaeRingSequence:
         div_b = _create_division(client, "Division B", "poomsae").get_json()["id"]
         div_c = _create_division(client, "Division C", "poomsae").get_json()["id"]
 
+        _set_poomsae_style(client, div_a, "group")
+        _set_poomsae_style(client, div_b, "group")
+        _set_poomsae_style(client, div_c, "group")
+
         # Assign out-of-order to verify ring_sequence is used, not insertion order
         client.patch(f"/ui/divisions/{div_a}/ring_assignment",
                      data={"ring_id": str(ring_id), "event_status": "Pending", "ring_sequence": "3"})
@@ -2099,6 +2106,9 @@ class TestPoomsaeRingSequence:
         ring_id = _create_ring(client, "Ring 1").get_json()["id"]
         div_a = _create_division(client, "AAA No Seq", "poomsae").get_json()["id"]
         div_b = _create_division(client, "BBB Seq 1", "poomsae").get_json()["id"]
+
+        _set_poomsae_style(client, div_a, "group")
+        _set_poomsae_style(client, div_b, "group")
 
         client.patch(f"/ui/divisions/{div_a}/ring_assignment",
                      data={"ring_id": str(ring_id), "event_status": "Pending", "ring_sequence": ""})
@@ -2186,6 +2196,7 @@ class TestPoomsaeScorekeeperStatus:
         """poomsae_divisions fragment shows status update buttons in scorekeeper mode."""
         ring_id = _create_ring(client, "Ring 1").get_json()["id"]
         div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+        _set_poomsae_style(client, div_id, "group")
 
         client.patch(
             f"/ui/divisions/{div_id}/ring_assignment",
@@ -2505,6 +2516,7 @@ class TestPoomsaeScorekeeperDivisions:
         ring_id = _create_ring(client, "Ring 1").get_json()["id"]
         div_id = _create_division(client, "World Class Poomsae", "poomsae").get_json()["id"]
         _add_competitors(client, div_id, ["Alice", "Bob"])
+        _set_poomsae_style(client, div_id, "group")
 
         client.patch(
             f"/ui/divisions/{div_id}/ring_assignment",
@@ -2778,3 +2790,152 @@ class TestPoomsaePlacementsFragment:
         assert resp.status_code == 200
         # The page itself should not have score submission endpoints directly
         assert b"poomsae_results_fragment" not in resp.data
+
+
+# ---------------------------------------------------------------------------
+# Poomsae Unified Ring Ordering (bracket matches + group divisions, same 1-99 pool)
+# ---------------------------------------------------------------------------
+
+
+class TestPoomsaeUnifiedRingOrder:
+    """Tests that bracket poomsae matches and group poomsae divisions are ordered
+    together using the same 1-99 ring sequence number pool."""
+
+    def test_ring_sequence_out_of_range_high(self, client):
+        """ring_sequence > 99 is rejected."""
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+        _set_poomsae_style(client, div_id, "group")
+
+        resp = client.patch(
+            f"/ui/divisions/{div_id}/ring_assignment",
+            data={"ring_id": str(ring_id), "event_status": "Pending", "ring_sequence": "100"},
+        )
+        assert resp.status_code == 400
+
+    def test_ring_sequence_out_of_range_zero(self, client):
+        """ring_sequence = 0 is rejected."""
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+        _set_poomsae_style(client, div_id, "group")
+
+        resp = client.patch(
+            f"/ui/divisions/{div_id}/ring_assignment",
+            data={"ring_id": str(ring_id), "event_status": "Pending", "ring_sequence": "0"},
+        )
+        assert resp.status_code == 400
+
+    def test_ring_sequence_boundary_values(self, client):
+        """ring_sequence = 1 and ring_sequence = 99 are both accepted."""
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_a = _create_division(client, "Div A", "poomsae").get_json()["id"]
+        div_b = _create_division(client, "Div B", "poomsae").get_json()["id"]
+        _set_poomsae_style(client, div_a, "group")
+        _set_poomsae_style(client, div_b, "group")
+
+        resp_a = client.patch(
+            f"/ui/divisions/{div_a}/ring_assignment",
+            data={"ring_id": str(ring_id), "event_status": "Pending", "ring_sequence": "1"},
+        )
+        resp_b = client.patch(
+            f"/ui/divisions/{div_b}/ring_assignment",
+            data={"ring_id": str(ring_id), "event_status": "Pending", "ring_sequence": "99"},
+        )
+        assert resp_a.status_code == 200
+        assert resp_b.status_code == 200
+
+        from app import Division, db
+        assert db.session.get(Division, div_a).ring_sequence == 1
+        assert db.session.get(Division, div_b).ring_sequence == 99
+
+    def test_bracket_match_appears_in_poomsae_divisions_fragment(self, client):
+        """Bracket-style poomsae matches show up in the unified poomsae_divisions fragment."""
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_id = _create_division(client, "Bracket Poomsae", "poomsae").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _set_poomsae_style(client, div_id, "bracket")
+        _generate_bracket(client, div_id)
+
+        match = Match.query.filter_by(division_id=div_id).first()
+        client.put(f"/matches/{match.id}/schedule",
+                   data={"ring_id": str(ring_id), "ring_sequence": "5"})
+
+        resp = client.get(f"/ui/rings/{ring_id}/poomsae_divisions")
+        assert resp.status_code == 200
+        assert b"Bracket Poomsae" in resp.data
+
+    def test_bracket_match_and_group_division_interleaved_by_sequence(self, client):
+        """Bracket match (seq=5) and group division (seq=3) interleave correctly."""
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+
+        # Bracket poomsae match at sequence 5
+        div_bracket = _create_division(client, "Bracket Poomsae", "poomsae").get_json()["id"]
+        _add_competitors(client, div_bracket, ["Alice", "Bob"])
+        _set_poomsae_style(client, div_bracket, "bracket")
+        _generate_bracket(client, div_bracket)
+        match = Match.query.filter_by(division_id=div_bracket).first()
+        client.put(f"/matches/{match.id}/schedule",
+                   data={"ring_id": str(ring_id), "ring_sequence": "5"})
+
+        # Group poomsae division at sequence 3
+        div_group = _create_division(client, "Group Poomsae", "poomsae").get_json()["id"]
+        _add_competitors(client, div_group, ["Carol", "Dave"])
+        _set_poomsae_style(client, div_group, "group")
+        client.patch(f"/ui/divisions/{div_group}/ring_assignment",
+                     data={"ring_id": str(ring_id), "event_status": "Pending", "ring_sequence": "3"})
+
+        resp = client.get(f"/ui/rings/{ring_id}/poomsae_divisions")
+        assert resp.status_code == 200
+        html = resp.data.decode()
+
+        # Group Poomsae (seq=3) should appear before Bracket Poomsae (seq=5)
+        assert html.find("Group Poomsae") < html.find("Bracket Poomsae")
+
+    def test_unsequenced_group_division_sorted_after_bracket_match(self, client):
+        """Unsequenced group division appears after bracket match with a sequence number."""
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+
+        # Bracket match at sequence 1
+        div_bracket = _create_division(client, "Bracket First", "poomsae").get_json()["id"]
+        _add_competitors(client, div_bracket, ["Alice", "Bob"])
+        _set_poomsae_style(client, div_bracket, "bracket")
+        _generate_bracket(client, div_bracket)
+        match = Match.query.filter_by(division_id=div_bracket).first()
+        client.put(f"/matches/{match.id}/schedule",
+                   data={"ring_id": str(ring_id), "ring_sequence": "1"})
+
+        # Group division with no sequence
+        div_group = _create_division(client, "Group Last", "poomsae").get_json()["id"]
+        _set_poomsae_style(client, div_group, "group")
+        client.patch(f"/ui/divisions/{div_group}/ring_assignment",
+                     data={"ring_id": str(ring_id), "event_status": "Pending", "ring_sequence": ""})
+
+        resp = client.get(f"/ui/rings/{ring_id}/poomsae_divisions")
+        assert resp.status_code == 200
+        html = resp.data.decode()
+
+        # Bracket First (seq=1) before Group Last (no seq)
+        assert html.find("Bracket First") < html.find("Group Last")
+
+    def test_poomsae_scorekeeper_uses_unified_container(self, client):
+        """Poomsae scorekeeper page uses the unified poomsae-divisions-container
+        rather than the separate matches-container for displaying content."""
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+
+        resp = client.get(f"/ring/{ring_id}/scorekeeper?event_type=poomsae")
+        assert resp.status_code == 200
+        # Unified container present
+        assert b"poomsae-divisions-container" in resp.data
+        # matches-container is hidden (display:none) for poomsae
+        assert b'id="matches-container"' in resp.data
+        assert b'display:none' in resp.data
+
+    def test_kyorugi_scorekeeper_uses_matches_container(self, client):
+        """Kyorugi scorekeeper still uses the standard matches-container."""
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+
+        resp = client.get(f"/ring/{ring_id}/scorekeeper?event_type=kyorugi")
+        assert resp.status_code == 200
+        # No hidden matches-container
+        assert b'display:none' not in resp.data
+        assert b"poomsae-divisions-container" not in resp.data
