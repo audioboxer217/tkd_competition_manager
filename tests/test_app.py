@@ -2004,6 +2004,184 @@ class TestPoomsaeRingAssignment:
         assert resp.status_code == 200
         assert b"Record Scores" not in resp.data
 
+    def test_poomsae_bracket_controls_shows_ring_order_field(self, client):
+        _create_ring(client, "Ring 1")
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+
+        resp = client.get(f"/ui/divisions/{div_id}/bracket_controls")
+        assert resp.status_code == 200
+        assert b"Ring Order" in resp.data
+
+
+class TestPoomsaeRingSequence:
+    """Tests for ring_sequence ordering of poomsae divisions within a ring."""
+
+    def test_ring_assignment_saves_ring_sequence(self, client):
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+
+        resp = client.patch(
+            f"/ui/divisions/{div_id}/ring_assignment",
+            data={"ring_id": str(ring_id), "event_status": "Pending", "ring_sequence": "2"},
+        )
+        assert resp.status_code == 200
+
+        from app import Division, db
+        div = db.session.get(Division, div_id)
+        assert div.ring_sequence == 2
+
+    def test_ring_assignment_clears_ring_sequence(self, client):
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+
+        client.patch(
+            f"/ui/divisions/{div_id}/ring_assignment",
+            data={"ring_id": str(ring_id), "event_status": "Pending", "ring_sequence": "3"},
+        )
+        client.patch(
+            f"/ui/divisions/{div_id}/ring_assignment",
+            data={"ring_id": str(ring_id), "event_status": "Pending", "ring_sequence": ""},
+        )
+
+        from app import Division, db
+        div = db.session.get(Division, div_id)
+        assert div.ring_sequence is None
+
+    def test_ring_assignment_invalid_ring_sequence(self, client):
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+
+        resp = client.patch(
+            f"/ui/divisions/{div_id}/ring_assignment",
+            data={"ring_id": str(ring_id), "event_status": "Pending", "ring_sequence": "abc"},
+        )
+        assert resp.status_code == 400
+
+    def test_poomsae_divisions_ordered_by_ring_sequence(self, client):
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_a = _create_division(client, "Division A", "poomsae").get_json()["id"]
+        div_b = _create_division(client, "Division B", "poomsae").get_json()["id"]
+        div_c = _create_division(client, "Division C", "poomsae").get_json()["id"]
+
+        # Assign out-of-order to verify ring_sequence is used, not insertion order
+        client.patch(f"/ui/divisions/{div_a}/ring_assignment",
+                     data={"ring_id": str(ring_id), "event_status": "Pending", "ring_sequence": "3"})
+        client.patch(f"/ui/divisions/{div_b}/ring_assignment",
+                     data={"ring_id": str(ring_id), "event_status": "Pending", "ring_sequence": "1"})
+        client.patch(f"/ui/divisions/{div_c}/ring_assignment",
+                     data={"ring_id": str(ring_id), "event_status": "Pending", "ring_sequence": "2"})
+
+        resp = client.get(f"/ui/rings/{ring_id}/poomsae_divisions")
+        assert resp.status_code == 200
+        html = resp.data.decode()
+
+        # B(1) < C(2) < A(3)
+        assert html.find("Division B") < html.find("Division C") < html.find("Division A")
+
+    def test_poomsae_divisions_no_sequence_sorted_last(self, client):
+        """Divisions without ring_sequence appear after sequenced ones."""
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_a = _create_division(client, "AAA No Seq", "poomsae").get_json()["id"]
+        div_b = _create_division(client, "BBB Seq 1", "poomsae").get_json()["id"]
+
+        client.patch(f"/ui/divisions/{div_a}/ring_assignment",
+                     data={"ring_id": str(ring_id), "event_status": "Pending", "ring_sequence": ""})
+        client.patch(f"/ui/divisions/{div_b}/ring_assignment",
+                     data={"ring_id": str(ring_id), "event_status": "Pending", "ring_sequence": "1"})
+
+        resp = client.get(f"/ui/rings/{ring_id}/poomsae_divisions")
+        assert resp.status_code == 200
+        html = resp.data.decode()
+
+        # BBB Seq 1 (sequence=1) should appear before AAA No Seq (no sequence)
+        assert html.find("BBB Seq 1") < html.find("AAA No Seq")
+
+
+class TestPoomsaeScorekeeperStatus:
+    """Tests for updating poomsae division event_status from the Scorekeeper page."""
+
+    def test_update_event_status_in_progress(self, client):
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+
+        resp = client.patch(
+            f"/ui/divisions/{div_id}/event_status",
+            data={"event_status": "In Progress"},
+        )
+        assert resp.status_code == 200
+
+        from app import Division, db
+        div = db.session.get(Division, div_id)
+        assert div.event_status == "In Progress"
+
+    def test_update_event_status_completed(self, client):
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+
+        resp = client.patch(
+            f"/ui/divisions/{div_id}/event_status",
+            data={"event_status": "Completed"},
+        )
+        assert resp.status_code == 200
+
+        from app import Division, db
+        div = db.session.get(Division, div_id)
+        assert div.event_status == "Completed"
+
+    def test_update_event_status_reset_to_pending(self, client):
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+
+        client.patch(f"/ui/divisions/{div_id}/event_status", data={"event_status": "In Progress"})
+        resp = client.patch(f"/ui/divisions/{div_id}/event_status", data={"event_status": "Pending"})
+        assert resp.status_code == 200
+
+        from app import Division, db
+        div = db.session.get(Division, div_id)
+        assert div.event_status == "Pending"
+
+    def test_update_event_status_invalid(self, client):
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+
+        resp = client.patch(
+            f"/ui/divisions/{div_id}/event_status",
+            data={"event_status": "Invalid Status"},
+        )
+        assert resp.status_code == 400
+
+    def test_update_event_status_not_found(self, client):
+        resp = client.patch("/ui/divisions/9999/event_status", data={"event_status": "In Progress"})
+        assert resp.status_code == 404
+
+    def test_update_event_status_returns_scorekeeper_fragment(self, client):
+        """Status update route returns poomsae results fragment in scorekeeper mode."""
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice"])
+
+        resp = client.patch(
+            f"/ui/divisions/{div_id}/event_status",
+            data={"event_status": "In Progress"},
+        )
+        assert resp.status_code == 200
+        assert b"In Progress" in resp.data
+        # Status buttons should be present (scorekeeper mode)
+        assert b"Start" not in resp.data  # Already In Progress, so "Start" button not shown
+        assert b"Complete" in resp.data   # "Complete" and "Reset" buttons shown
+        assert b"Reset" in resp.data
+
+    def test_scorekeeper_fragment_shows_status_buttons(self, client):
+        """poomsae_divisions fragment shows status update buttons in scorekeeper mode."""
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+
+        client.patch(
+            f"/ui/divisions/{div_id}/ring_assignment",
+            data={"ring_id": str(ring_id), "event_status": "Pending"},
+        )
+
+        resp = client.get(f"/ui/rings/{ring_id}/poomsae_divisions")
+        assert resp.status_code == 200
+        # Should show "Start" (→ In Progress) and "Complete" (→ Completed) since status is Pending
+        assert b"Start" in resp.data
+        assert b"Complete" in resp.data
+
 
 class TestPoomsaeScoreRecording:
     """Tests for recording poomsae scores (POST /ui/divisions/<id>/competitors/<id>/score)."""

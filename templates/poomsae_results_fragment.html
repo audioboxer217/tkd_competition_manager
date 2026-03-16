@@ -1,9 +1,26 @@
 <div id="poomsae-scores-{{ division.id }}"{% if scorekeeper_mode is defined and scorekeeper_mode %} class="match-card"{% endif %}>
     {% if scorekeeper_mode is defined and scorekeeper_mode %}
-    <div class="match-info">
-        <strong>{{ division.name }}</strong>
-        <span class="{% if division.event_status == 'In Progress' %}status-in-progress{% elif division.event_status == 'Completed' %}status-completed{% else %}status-pending{% endif %}"
-              style="margin-left: 8px; font-size: 0.85rem;">{{ division.event_status }}</span>
+    <div class="match-info" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+        <span>
+            <strong>{{ division.name }}</strong>
+            {% if division.ring_sequence is not none %}
+            <span style="margin-left: 6px; font-size: 0.8rem; color: #94a3b8;">#{{ division.ring_sequence }}</span>
+            {% endif %}
+            <span class="{% if division.event_status == 'In Progress' %}status-in-progress{% elif division.event_status == 'Completed' %}status-completed{% else %}status-pending{% endif %}"
+                  style="margin-left: 8px; font-size: 0.85rem;">{{ division.event_status }}</span>
+        </span>
+        <span style="display: flex; gap: 6px; flex-wrap: wrap;">
+            {% for btn_status, btn_label, btn_color in [('Pending', 'Reset', '#64748b'), ('In Progress', 'Start', '#f59e0b'), ('Completed', 'Complete', '#10b981')] %}
+            {% if division.event_status != btn_status %}
+            <button hx-patch="/ui/divisions/{{ division.id }}/event_status"
+                    hx-vals='{"event_status": "{{ btn_status }}"}'
+                    hx-target="#poomsae-scores-{{ division.id }}" hx-swap="outerHTML"
+                    style="background: {{ btn_color }}; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; font-weight: 600;">
+                {{ btn_label }}
+            </button>
+            {% endif %}
+            {% endfor %}
+        </span>
     </div>
     {% endif %}
     {% if not ranked %}
@@ -49,7 +66,7 @@
                 </td>
                 <td style="padding: 6px 12px; text-align: center;">
                     <form hx-post="/ui/divisions/{{ division.id }}/competitors/{{ competitor.id }}/score"
-                          hx-target="#poomsae-scores-{{ division.id }}" hx-swap="innerHTML"
+                          hx-target="#poomsae-scores-{{ division.id }}" hx-swap="outerHTML"
                           style="display: flex; gap: 4px; justify-content: center; align-items: center;">
                         <input type="number" name="score_value" step="0.001" min="0"
                                value="{{ "%.3f"|format(score.score_value) if has_score else '' }}"

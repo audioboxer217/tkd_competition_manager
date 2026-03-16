@@ -11,6 +11,13 @@
             {% endfor %}
         </select>
     </div>
+    <div style="margin-bottom: 10px;">
+        <label style="font-size: 0.9rem; color: #475569; display: block; margin-bottom: 4px;">Ring Order <span style="color: #94a3b8; font-weight: normal;">(1 = first, 2 = second, …)</span></label>
+        <input type="number" name="ring_sequence" min="1"
+               value="{{ division.ring_sequence if division.ring_sequence is not none else '' }}"
+               placeholder="e.g. 1"
+               style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 0.95rem; box-sizing: border-box;">
+    </div>
     <div style="margin-bottom: 12px;">
         <label style="font-size: 0.9rem; color: #475569; display: block; margin-bottom: 4px;">Status</label>
         <select name="event_status" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 0.95rem;">
@@ -23,7 +30,7 @@
 </form>
 {% if division.ring_id %}
 <div style="margin-top: 10px; padding: 8px 12px; background: #dbeafe; border-radius: 4px; font-size: 0.9rem;">
-    <strong>Assigned</strong> &mdash; Status: <strong>{{ division.event_status }}</strong>
+    <strong>Assigned</strong> &mdash; Order: <strong>{{ division.ring_sequence if division.ring_sequence is not none else '—' }}</strong> &mdash; Status: <strong>{{ division.event_status }}</strong>
 </div>
 {% endif %}
 {% if division.competitors %}
