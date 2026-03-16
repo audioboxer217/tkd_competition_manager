@@ -23,6 +23,8 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
         }
 
         .header h1 {
@@ -193,6 +195,11 @@
             animation: resultNotificationFade 16s forwards;
         }
 
+        .competitor-name {
+            color: #0f172a;
+            font-size: 1.5rem;
+        }
+
         a.back-link {
             color: #64748b;
             text-decoration: none;
@@ -200,6 +207,34 @@
 
         a.back-link:hover {
             color: #0f172a;
+        }
+
+        @media (max-width: 600px) {
+            .header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .header h1 {
+                font-size: 1.2rem;
+            }
+
+            .competitor-label {
+                padding: 12px 8px;
+                font-size: 1rem;
+            }
+
+            .competitor-label .competitor-name {
+                font-size: 1.1rem;
+            }
+
+            .controls {
+                flex-wrap: wrap;
+            }
+
+            .controls button {
+                flex: 1 1 100%;
+            }
         }
     </style>
 </head>

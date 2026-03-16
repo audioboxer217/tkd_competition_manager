@@ -1527,6 +1527,9 @@ class TestEventTypes:
         assert resp.status_code == 200
         assert b'id="htmx-confirm-modal"' in resp.data
         assert b"htmx:confirm" in resp.data
+        assert b'name="viewport"' in resp.data
+        assert b'@media (max-width: 600px)' in resp.data
+        assert b'flex-direction: column' in resp.data
 
     def test_ring_scorekeeper_not_found(self, client):
         resp = client.get("/ring/9999/scorekeeper")
