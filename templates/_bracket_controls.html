@@ -34,7 +34,10 @@
 {% else %}
 <p style="font-size: 0.9rem; color: #64748b; margin-top: 15px;">Add competitors above to enable score recording.</p>
 {% endif %}
-{% elif division.matches %}
+<hr style="border: none; border-top: 1px solid #e2e8f0; margin: 18px 0 14px;">
+<h4 style="margin: 0 0 10px 0; color: #0f172a;">Bracket</h4>
+{% endif %}
+{% if division.matches %}
 <div style="padding: 15px; background: #d1fae5; border-radius: 4px; margin-bottom: 10px;">
     <a href="/admin/divisions/{{ division.id }}/bracket_manage"
         style="display: inline-block; background: #059669; color: white; padding: 8px 16px; text-decoration: none; border-radius: 4px;">
