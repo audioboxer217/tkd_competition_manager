@@ -1332,9 +1332,6 @@ def ui_poomsae_ring_assignment(div_id):
     division = Division.query.get_or_404(div_id)
     if division.event_type != "poomsae":
         return "Not a poomsae division.", 400
-    # Only non-bracket (group) poomsae divisions should use this workflow.
-    if division.poomsae_style != "group":
-        return "Ring assignment via this endpoint is only valid for group poomsae divisions.", 400
 
     ring_id = request.form.get("ring_id")
     event_status = request.form.get("event_status", "Pending")
@@ -1383,6 +1380,9 @@ def ui_poomsae_ring_assignment(div_id):
                 )
                 db.session.rollback()
                 return f"Sequence {ring_sequence_int} is already used by \"{conflict_name}\" in this ring.", 400
+        division.ring_sequence = ring_sequence_int
+    else:
+        division.ring_sequence = None
     db.session.commit()
 
     rings = Ring.query.all()
@@ -1414,7 +1414,7 @@ def ui_record_poomsae_score(div_id, comp_id):
     """Record or update a poomsae score for a single competitor."""
     division = Division.query.get_or_404(div_id)
     # Ensure this route is only used for poomsae divisions.
-    if getattr(division, "event_type", None) not in (None, "Poomsae") and getattr(division, "event_type", None) != "Poomsae":
+    if division.event_type != "poomsae":
         return "Division is not a poomsae division.", 400
 
     competitor = Competitor.query.get_or_404(comp_id)
