@@ -2243,6 +2243,42 @@ class TestPoomsaeScoreRecording:
         db.session.expire_all()
         assert Score.query.filter_by(division_id=div_id).count() == 0
 
+    def test_scorekeeper_mode_preserved_after_score_save(self, client):
+        """Saving a score with scorekeeper_mode=1 must return the fragment with the
+        status-action buttons (Reset / Complete) still present."""
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice"])
+
+        from app import Competitor
+        comp = Competitor.query.filter_by(division_id=div_id).first()
+
+        resp = client.post(
+            f"/ui/divisions/{div_id}/competitors/{comp.id}/score",
+            data={"score_value": "8.500", "scorekeeper_mode": "1"},
+        )
+        assert resp.status_code == 200
+        html = resp.data.decode()
+        # Scorekeeper header/buttons should be present
+        assert "event_status" in html
+        assert "Complete" in html
+
+    def test_scorekeeper_mode_absent_without_flag(self, client):
+        """Saving a score without scorekeeper_mode must NOT render scorekeeper buttons."""
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice"])
+
+        from app import Competitor
+        comp = Competitor.query.filter_by(division_id=div_id).first()
+
+        resp = client.post(
+            f"/ui/divisions/{div_id}/competitors/{comp.id}/score",
+            data={"score_value": "8.500"},
+        )
+        assert resp.status_code == 200
+        html = resp.data.decode()
+        # No status action buttons in non-scorekeeper mode
+        assert "hx-patch" not in html or "event_status" not in html
+
 
 class TestPoomsaeResultsPage:
     """Tests for the poomsae results page and fragment."""
