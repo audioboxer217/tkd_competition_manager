@@ -1430,6 +1430,7 @@ def ui_record_poomsae_score(div_id, comp_id):
 
 
 @app.route("/ui/divisions/<int:div_id>/poomsae_results_fragment")
+@login_required
 def ui_poomsae_results_fragment(div_id):
     """HTMX fragment: ranked poomsae results with score-entry forms (for score_manage and scorekeeper)."""
     scorekeeper_mode = request.args.get("scorekeeper_mode") == "1"
