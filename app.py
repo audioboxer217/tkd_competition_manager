@@ -1407,7 +1407,11 @@ def ui_update_event_status(div_id):
 @login_required
 def ui_record_poomsae_score(div_id, comp_id):
     """Record or update a poomsae score for a single competitor."""
-    Division.query.get_or_404(div_id)
+    division = Division.query.get_or_404(div_id)
+    # Ensure this route is only used for poomsae divisions.
+    if getattr(division, "event_type", None) not in (None, "Poomsae") and getattr(division, "event_type", None) != "Poomsae":
+        return "Division is not a poomsae division.", 400
+
     competitor = Competitor.query.get_or_404(comp_id)
     if competitor.division_id != div_id:
         return "Not found", 404
@@ -1415,6 +1419,10 @@ def ui_record_poomsae_score(div_id, comp_id):
     try:
         score_value = float(request.form.get("score_value", ""))
     except (ValueError, TypeError):
+        return "Invalid score value.", 400
+
+    # Reject NaN, Infinity, and negative scores.
+    if not math.isfinite(score_value) or score_value < 0:
         return "Invalid score value.", 400
 
     score = Score.query.filter_by(competitor_id=comp_id, division_id=div_id).first()
