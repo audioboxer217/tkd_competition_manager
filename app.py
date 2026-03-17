@@ -1063,15 +1063,18 @@ def schedule_match_htmx(match_id):
             )
             .first()
         )
-        # Also check whether a group poomsae division already occupies this ring+sequence
-        # (group divisions share the 1-99 sequence pool with bracket matches)
+        # Also check whether a poomsae division already occupies this ring+sequence
+        # (poomsae divisions share the 1-99 sequence pool with bracket matches)
         conflicting_division = None
         if event_type == "poomsae":
-            conflicting_division = Division.query.filter_by(
-                ring_id=ring_id_int,
-                ring_sequence=ring_sequence_int,
-                poomsae_style="group",
-            ).first()
+            conflicting_division = (
+                Division.query.filter(
+                    Division.event_type == "poomsae",
+                    Division.ring_id == ring_id_int,
+                    Division.ring_sequence == ring_sequence_int,
+                    Division.id != match.division_id,
+                ).first()
+            )
         if duplicate or conflicting_division:
             rings = Ring.query.all()
             ring_options = "".join(
