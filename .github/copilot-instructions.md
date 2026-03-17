@@ -18,10 +18,13 @@ This is a lightweight, web-based **Taekwondo Competition Manager** built with Py
 - `app.py` — Main application: Flask app, SQLAlchemy models, all route handlers
 - `templates/` — Jinja2 HTML templates
 - `tests/` — Pytest test suite (`conftest.py` fixtures + `test_app.py`)
-- `init_db.py` — Script to initialize the database schema
-- `reset_db.py` — Script to reset the database
-- `test_db.py` — Script to test the database connection
-- `update_secrets.py` — Script to upload `secrets.json` configuration to an S3 bucket
+- `scripts/init_db.py` — Script to initialize the database schema
+- `scripts/reset_db.py` — Script to reset the database
+- `scripts/test_db.py` — Script to test the database connection
+- `scripts/update_secrets.py` — Script to upload `secrets.json` configuration to an S3 bucket
+- `scripts/migrate_add_event_type.py` — Migration script to add `event_type` to Division
+- `scripts/migrate_add_poomsae_style.py` — Migration script to add `poomsae_style` to Division
+- `scripts/migrate_add_position.py` — Migration script to add `position` to Competitor
 - `pyproject.toml` — Project dependencies (managed with `uv`)
 - `zappa_settings.json` — AWS Lambda deployment configuration
 

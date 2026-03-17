@@ -12,6 +12,13 @@ Usage::
 
 from sqlalchemy import text
 
+try:
+    from scripts._bootstrap import add_repo_root_to_path
+except ModuleNotFoundError:  # Allows `python scripts/migrate_add_position.py`
+    from _bootstrap import add_repo_root_to_path
+
+add_repo_root_to_path()
+
 from app import app, db
 
 
@@ -26,10 +33,7 @@ def column_exists(conn, table: str, column: str) -> bool:
     dialect = conn.dialect.name
     if dialect == "postgresql":
         result = conn.execute(
-            text(
-                "SELECT 1 FROM information_schema.columns "
-                "WHERE table_name = :t AND column_name = :c"
-            ),
+            text("SELECT 1 FROM information_schema.columns WHERE table_name = :t AND column_name = :c"),
             {"t": table, "c": column},
         )
     else:
@@ -45,9 +49,7 @@ with app.app_context():
             print("Column 'position' already exists – nothing to do.")
         else:
             print("Adding 'position' column to competitor table…")
-            conn.execute(
-                text("ALTER TABLE competitor ADD COLUMN position INTEGER")
-            )
+            conn.execute(text("ALTER TABLE competitor ADD COLUMN position INTEGER"))
             conn.commit()
             print("Column added.")
 

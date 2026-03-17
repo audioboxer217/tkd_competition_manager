@@ -91,6 +91,21 @@ A lightweight, web-based tournament management system built with Python (Flask) 
 
 - `app.py`: Main application logic, database models, and routes.
 - `templates/`: Contains HTML templates (e.g., `index.html`, `admin.html`, `bracket_view.html`).
+- `scripts/`: Management utilities and migrations.
+
+## Management Scripts
+
+Run scripts from the repository root:
+
+```bash
+uv run scripts/init_db.py
+uv run scripts/reset_db.py
+uv run scripts/test_db.py
+uv run scripts/migrate_add_event_type.py
+uv run scripts/migrate_add_poomsae_style.py
+uv run scripts/migrate_add_position.py
+uv run scripts/update_secrets.py --env dev
+```
 
 ## Database Models
 

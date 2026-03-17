@@ -1,18 +1,25 @@
-"""Migration: add poomsae_style column to division table.
+"""Migration: add event_type column to division table.
 
 Run this script once against an existing database that was created before the
-``poomsae_style`` column was added to the ``Division`` model.  It is safe to run
+``event_type`` column was added to the ``Division`` model.  It is safe to run
 multiple times – it checks whether the column already exists before applying
 any changes.
 
-Existing divisions are left with ``NULL`` (style not yet chosen).
+Existing divisions are backfilled with ``'kyorugi'`` (the default).
 
 Usage::
 
-    python migrate_add_poomsae_style.py
+    python migrate_add_event_type.py
 """
 
 from sqlalchemy import text
+
+try:
+    from scripts._bootstrap import add_repo_root_to_path
+except ModuleNotFoundError:  # Allows `python scripts/migrate_add_event_type.py`
+    from _bootstrap import add_repo_root_to_path
+
+add_repo_root_to_path()
 
 from app import app, db
 
@@ -40,10 +47,10 @@ def column_exists(conn, table: str, column: str) -> bool:
 
 with app.app_context():
     with db.engine.connect() as conn:
-        if column_exists(conn, "division", "poomsae_style"):
-            print("Column 'poomsae_style' already exists – nothing to do.")
+        if column_exists(conn, "division", "event_type"):
+            print("Column 'event_type' already exists – nothing to do.")
         else:
-            print("Adding 'poomsae_style' column to division table…")
-            conn.execute(text("ALTER TABLE division ADD COLUMN poomsae_style VARCHAR(10)"))
+            print("Adding 'event_type' column to division table…")
+            conn.execute(text("ALTER TABLE division ADD COLUMN event_type VARCHAR(20) NOT NULL DEFAULT 'kyorugi'"))
             conn.commit()
-            print("Done. All existing poomsae divisions will show the format selector on next visit.")
+            print("Done. All existing divisions have been set to 'kyorugi'.")
