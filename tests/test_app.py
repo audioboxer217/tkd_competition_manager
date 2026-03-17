@@ -3171,3 +3171,114 @@ class TestPoomsaeSequenceConflictPrevention:
                             data={"ring_id": str(ring_id), "event_status": "In Progress",
                                    "ring_sequence": "6"})
         assert resp.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Poomsae Results Page — scores hidden
+# ---------------------------------------------------------------------------
+
+
+class TestPoomsaePlacementsNoScore:
+    """The poomsae_results (placements) page must NOT show raw score values."""
+
+    def test_placements_fragment_hides_score_column(self, client):
+        """After adding scores the placements fragment must not expose score values."""
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob", "Carol"])
+
+        from app import Competitor
+        comps = {c.name: c for c in Competitor.query.filter_by(division_id=div_id).all()}
+
+        for name, score in [("Alice", "9.5"), ("Bob", "8.5"), ("Carol", "7.5")]:
+            client.post(
+                f"/ui/divisions/{div_id}/competitors/{comps[name].id}/score",
+                data={"score_value": score},
+            )
+
+        resp = client.get(f"/ui/divisions/{div_id}/poomsae_placements_fragment")
+        assert resp.status_code == 200
+        html = resp.data.decode()
+        # Medal emojis should be present
+        assert "🥇" in html
+        assert "🥈" in html
+        assert "🥉" in html
+        # Competitor names should be present
+        assert "Alice" in html
+        assert "Bob" in html
+        assert "Carol" in html
+        # Raw score values must NOT appear
+        assert "9.500" not in html
+        assert "8.500" not in html
+        assert "7.500" not in html
+        # No "Score" header column
+        assert "Score" not in html
+
+
+# ---------------------------------------------------------------------------
+# Completed group divisions removed from Scorekeeper and Live View
+# ---------------------------------------------------------------------------
+
+
+class TestCompletedGroupDivisionVisibility:
+    """Completed group divisions must not appear in the Scorekeeper fragment or Live View."""
+
+    def _setup_group_division(self, client, ring_id, div_name, seq, status="Pending"):
+        div_id = _create_division(client, div_name, "poomsae").get_json()["id"]
+        _set_poomsae_style(client, div_id, "group")
+        client.patch(
+            f"/ui/divisions/{div_id}/ring_assignment",
+            data={"ring_id": str(ring_id), "event_status": status, "ring_sequence": str(seq)},
+        )
+        return div_id
+
+    def test_completed_group_hidden_from_scorekeeper(self, client):
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_id = self._setup_group_division(client, ring_id, "Done Poomsae", seq=1, status="Completed")
+
+        resp = client.get(f"/ui/rings/{ring_id}/poomsae_divisions")
+        assert resp.status_code == 200
+        assert b"Done Poomsae" not in resp.data
+
+    def test_in_progress_group_shown_in_scorekeeper(self, client):
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        self._setup_group_division(client, ring_id, "Active Poomsae", seq=1, status="In Progress")
+
+        resp = client.get(f"/ui/rings/{ring_id}/poomsae_divisions")
+        assert resp.status_code == 200
+        assert b"Active Poomsae" in resp.data
+
+    def test_pending_group_shown_in_scorekeeper(self, client):
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        self._setup_group_division(client, ring_id, "Pending Poomsae", seq=1, status="Pending")
+
+        resp = client.get(f"/ui/rings/{ring_id}/poomsae_divisions")
+        assert resp.status_code == 200
+        assert b"Pending Poomsae" in resp.data
+
+    def test_completing_via_status_route_clears_scorekeeper(self, client):
+        """After PATCH event_status → Completed the scorekeeper fragment no longer shows the division."""
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_id = self._setup_group_division(client, ring_id, "Will Complete", seq=2, status="In Progress")
+
+        # Mark completed
+        client.patch(f"/ui/divisions/{div_id}/event_status", data={"event_status": "Completed"})
+
+        resp = client.get(f"/ui/rings/{ring_id}/poomsae_divisions")
+        html = resp.data.decode()
+        assert "Will Complete" not in html
+
+    def test_completed_group_hidden_from_live_view(self, client):
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        self._setup_group_division(client, ring_id, "Finished Group", seq=1, status="Completed")
+
+        resp = client.get("/ui/public_rings?event_type=poomsae")
+        assert resp.status_code == 200
+        assert b"Finished Group" not in resp.data
+
+    def test_non_completed_group_shown_in_live_view(self, client):
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        self._setup_group_division(client, ring_id, "Running Group", seq=1, status="In Progress")
+
+        resp = client.get("/ui/public_rings?event_type=poomsae")
+        assert resp.status_code == 200
+        assert b"Running Group" in resp.data
