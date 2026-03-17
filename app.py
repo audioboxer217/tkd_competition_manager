@@ -1327,6 +1327,12 @@ def ui_set_poomsae_style(div_id):
 def ui_poomsae_ring_assignment(div_id):
     """Assign a poomsae division to a ring and update its event status and ring sequence."""
     division = Division.query.get_or_404(div_id)
+    if division.event_type != "poomsae":
+        return "Not a poomsae division.", 400
+    # Only non-bracket (group) poomsae divisions should use this workflow.
+    if division.poomsae_style != "group":
+        return "Ring assignment via this endpoint is only valid for group poomsae divisions.", 400
+
     ring_id = request.form.get("ring_id")
     event_status = request.form.get("event_status", "Pending")
     ring_sequence_raw = request.form.get("ring_sequence", "")
@@ -1374,10 +1380,6 @@ def ui_poomsae_ring_assignment(div_id):
                 )
                 db.session.rollback()
                 return f"Sequence {ring_sequence_int} is already used by \"{conflict_name}\" in this ring.", 400
-        division.ring_sequence = ring_sequence_int
-    else:
-        division.ring_sequence = None
-
     db.session.commit()
 
     rings = Ring.query.all()
