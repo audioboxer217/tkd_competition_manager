@@ -11,7 +11,7 @@ This is a lightweight, web-based **Taekwondo Competition Manager** built with Py
 - **Backend**: Flask, SQLAlchemy (ORM)
 - **Database**: PostgreSQL (via `psycopg2-binary`) in production; connection details loaded from `.env`
 - **Frontend**: HTML templates (Jinja2), [HTMX](https://htmx.org/) for dynamic interactions (no JavaScript framework)
-- **Deployment**: AWS Lambda via [Zappa](https://github.com/zappa/Zappa) or container (Containerfile)
+- **Deployment**: AWS Lambda via [Zappa](https://github.com/zappa/Zappa)
 
 ## Project Structure
 
@@ -24,7 +24,6 @@ This is a lightweight, web-based **Taekwondo Competition Manager** built with Py
 - `update_secrets.py` — Script to upload `secrets.json` configuration to an S3 bucket
 - `pyproject.toml` — Project dependencies (managed with `uv`)
 - `zappa_settings.json` — AWS Lambda deployment configuration
-- `Containerfile` — Container image definition
 
 ## Database Models
 
