@@ -1,7 +1,7 @@
 {% if divisions %}
 <div class="divisions-list">
     {% for item in divisions %}
-    <a href="{% if item.division.event_type == 'poomsae' and item.division.poomsae_style %}/admin/divisions/{{ item.division.id }}/poomsae_results{% else %}/ui/divisions/{{ item.division.id }}/bracket{% endif %}" class="division-btn">
+    <a href="{% if item.division.event_type == 'poomsae' and item.division.poomsae_style != 'bracket' %}/admin/divisions/{{ item.division.id }}/poomsae_results{% else %}/ui/divisions/{{ item.division.id }}/bracket{% endif %}" class="division-btn">
         <div class="division-name">{{ item.division.name }}</div>
         <div class="division-meta">{{ item.status }}</div>
     </a>

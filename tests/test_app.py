@@ -2353,9 +2353,10 @@ class TestPoomsaeResultsPage:
         assert f"/admin/divisions/{div_id}/poomsae_results".encode() in resp.data
 
     def test_results_divisions_poomsae_with_bracket_links_to_bracket(self, client):
-        """Poomsae division that has a bracket links to the bracket view, not poomsae results."""
+        """Poomsae division with bracket style links to the bracket view, not poomsae results."""
         div_id = _create_division(client, "Bracket Poomsae Div", "poomsae").get_json()["id"]
         _add_competitors(client, div_id, ["Alice", "Bob"])
+        _set_poomsae_style(client, div_id, "bracket")
         _generate_bracket(client, div_id)
 
         resp = client.get("/ui/results_divisions?event_type=poomsae")
