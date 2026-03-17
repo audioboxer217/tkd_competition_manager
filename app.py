@@ -659,11 +659,12 @@ def ui_public_rings():
         # For poomsae tab: merge bracket matches and group divisions into a single
         # interleaved list sorted by their common ring sequence number.
         if event_type == "poomsae":
-            # Show group and un-configured poomsae divisions; bracket ones appear via matches.
+            # Show group and un-configured poomsae divisions (exclude Completed); bracket ones appear via matches.
             group_divisions = Division.query.filter(
                 Division.ring_id == ring.id,
                 Division.event_type == "poomsae",
                 db.or_(Division.poomsae_style != "bracket", Division.poomsae_style.is_(None)),
+                Division.event_status != "Completed",
             ).all()
             # Build unified items: (sequence, type, object)
             poomsae_items = []
@@ -1465,8 +1466,13 @@ def ui_ring_poomsae_divisions(ring_id):
         .all()
     )
 
-    # --- Group poomsae divisions assigned to this ring ---
-    group_divisions = Division.query.filter_by(ring_id=ring_id, event_type="poomsae", poomsae_style="group").all()
+    # --- Group poomsae divisions assigned to this ring (exclude Completed) ---
+    group_divisions = Division.query.filter(
+        Division.ring_id == ring_id,
+        Division.event_type == "poomsae",
+        Division.poomsae_style == "group",
+        Division.event_status != "Completed",
+    ).all()
 
     if not bracket_matches and not group_divisions:
         return '<div class="empty-state">No poomsae divisions assigned to this ring.</div>'

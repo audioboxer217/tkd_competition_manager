@@ -15,7 +15,6 @@
         <tr style="background: #1e293b; color: white;">
             <th style="padding: 10px 16px; text-align: center; width: 60px;">Place</th>
             <th style="padding: 10px 16px; text-align: left;">Competitor</th>
-            <th style="padding: 10px 16px; text-align: center; width: 110px;">Score</th>
         </tr>
     </thead>
     <tbody>
@@ -31,7 +30,6 @@
         <tr class="{{ row_class }}" style="border-bottom: 1px solid #e2e8f0;">
             <td style="padding: 10px 16px; text-align: center; font-size: 1.4rem; font-weight: bold;">{{ medal }}</td>
             <td style="padding: 10px 16px; font-weight: {% if loop_index <= 4 %}bold{% else %}normal{% endif %};">{{ competitor.name }}</td>
-            <td style="padding: 10px 16px; text-align: center; font-weight: bold; color: #0f172a;">{{ "%.3f"|format(score.score_value) }}</td>
         </tr>
         {% endif %}
         {% endfor %}
