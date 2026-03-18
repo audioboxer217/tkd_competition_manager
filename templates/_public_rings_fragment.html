@@ -1,0 +1,70 @@
+{% for ring in rings %}
+<div class="ring-card">
+    <h2>{{ ring.name }}</h2>
+    {% if ring.last_completed %}
+    <strong>{{ ring.last_completed.match_number }}</strong> - <a
+        href="/ui/divisions/{{ ring.last_completed.division.id }}/bracket">{{ ring.last_completed.division.name }}</a>
+    ({{ ring.last_completed.round_short }})
+    <div class="match-item match-item-completed">
+        <div>
+            <div>
+                <font style="color: #252ceb; font-weight: bold;">{{ ring.last_completed.comp_1 }}</font> <span
+                    class="result-indicator {% if ring.last_completed.comp_1_result == 'W' %}result-win{% elif ring.last_completed.comp_1_result == 'L' %}result-loss{% else %}result-neutral{% endif %}">{{
+                    ring.last_completed.comp_1_result }}</span>
+            </div>
+            <div>
+                <font style="color: #eb2525; font-weight: bold;">{{ ring.last_completed.comp_2 }}</font> <span
+                    class="result-indicator {% if ring.last_completed.comp_2_result == 'W' %}result-win{% elif ring.last_completed.comp_2_result == 'L' %}result-loss{% else %}result-neutral{% endif %}">{{
+                    ring.last_completed.comp_2_result }}</span>
+            </div>
+        </div>
+        <span class="status-completed">{{ ring.last_completed.status }}</span>
+    </div>
+    {% endif %}
+    {% if not ring.matches and not ring.poomsae_items %}
+    {% if not ring.last_completed %}
+    <p style="color: #94a3b8;">No upcoming matches.</p>
+    {% endif %}
+    {% endif %}
+    {% for match in ring.matches %}
+    <strong>{{ match.match_number }}</strong> - <a href="/ui/divisions/{{ match.division.id }}/bracket">{{
+        match.division.name }}</a> ({{ match.round_short }})
+    <div class="match-item">
+        <span class="match-competitors">
+            <font style="color: #252ceb; font-weight: bold;">{{ match.comp_1 }}</font> vs <font
+                style="color: #eb2525; font-weight: bold;">{{ match.comp_2 }}</font>
+        </span>
+        <span class="{% if match.status == 'In Progress' %}status-in-progress{% else %}status-pending{% endif %}">
+            {{ match.status }}
+        </span>
+    </div>
+    {% endfor %}
+    {% for item in ring.poomsae_items %}
+    {% if item.kind == 'match' %}
+    {% set match = item.obj %}
+    <strong>{{ match.match_number }}</strong> - <a href="/ui/divisions/{{ match.division.id }}/bracket">{{
+        match.division.name }}</a> ({{ match.round_short }})
+    <div class="match-item">
+        <span class="match-competitors">
+            <font style="color: #252ceb; font-weight: bold;">{{ match.comp_1 }}</font> vs <font
+                style="color: #eb2525; font-weight: bold;">{{ match.comp_2 }}</font>
+        </span>
+        <span class="{% if match.status == 'In Progress' %}status-in-progress{% else %}status-pending{% endif %}">
+            {{ match.status }}
+        </span>
+    </div>
+    {% else %}
+    {% set division = item.obj %}
+    <a href="/admin/divisions/{{ division.id }}/poomsae_results" style="text-decoration: none; color: inherit;">
+        <div class="match-item" style="cursor: pointer;">
+            <span style="font-weight: 600;">{{ division.name }}</span>
+            <span
+                class="{% if division.event_status == 'In Progress' %}status-in-progress{% elif division.event_status == 'Completed' %}status-completed{% else %}status-pending{% endif %}">
+                {{ division.event_status }}
+            </span>
+        </div>
+    </a>
+    {% endif %}
+    {% endfor %}
+</div>
+{% endfor %}

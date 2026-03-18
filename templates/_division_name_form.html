@@ -1,0 +1,9 @@
+<form hx-patch="/ui/divisions/{{ division.id }}/name" hx-target="#division-name-header" hx-swap="innerHTML"
+    style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+    <input type="text" name="name" value="{{ division.name }}" required
+        style="padding: 5px 8px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 1.2rem; flex: 1; min-width: 200px;">
+    <button type="submit" style="background: #10b981; padding: 5px 12px; width: auto; font-size: 0.9rem;">Save</button>
+    <button type="button" hx-get="/ui/divisions/{{ division.id }}/name_display" hx-target="#division-name-header"
+        hx-swap="innerHTML"
+        style="background: #64748b; padding: 5px 12px; width: auto; font-size: 0.9rem;">Cancel</button>
+</form>

@@ -1,0 +1,12 @@
+<div id="result-notification" hx-swap-oob="innerHTML">
+    <div class="result-notification-content">
+        <h3 style="margin-top: 0;">Match {{ match_number }} Complete</h3>
+        <p><strong>{{ winner_name }}</strong> {{ result_message }}</p>
+    </div>
+</div>
+{% if is_poomsae %}
+<div id="poomsae-divisions-container" hx-get="/ui/rings/{{ match.ring_id }}/poomsae_divisions" hx-trigger="load"
+    hx-swap="innerHTML" hx-swap-oob="outerHTML"></div>
+{% else %}
+<div id="matches-container" hx-swap-oob="innerHTML">{{ matches_html | safe }}</div>
+{% endif %}

@@ -1,0 +1,13 @@
+<li>
+    <span>{{ division.name }}</span>
+    <div>
+        <a href="/admin/divisions/{{ division.id }}/setup" class="button"
+            style="text-decoration: none; display: inline-block;">
+            Manage
+        </a>
+        <button class="danger-btn" hx-delete="/ui/divisions/{{ division.id }}" hx-target="closest li"
+            hx-swap="outerHTML" hx-confirm="Delete division '{{ division.name }}' and all its matches?">
+            Delete
+        </button>
+    </div>
+</li>
