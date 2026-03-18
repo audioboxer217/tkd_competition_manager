@@ -6,7 +6,7 @@ from functools import wraps
 from urllib.parse import urlparse
 
 from dotenv import load_dotenv
-from flask import Flask, Response, jsonify, make_response, redirect, render_template, render_template_string, request, session, url_for
+from flask import Flask, Response, jsonify, make_response, redirect, render_template, request, session, url_for
 from flask_sqlalchemy import SQLAlchemy
 from flask_wtf.csrf import CSRFProtect
 from markupsafe import escape
@@ -201,30 +201,12 @@ def record_result(match_id):
 def _competitors_list_html(div_id):
     """Return HTML fragment for the competitor list with management controls."""
     competitors = Competitor.query.filter_by(division_id=div_id).order_by(Competitor.position).all()
-    if not competitors:
-        return "<li style='color: #94a3b8;'>No competitors added yet.</li>"
-    total = len(competitors)
-    items = []
-    for i, c in enumerate(competitors):
-        up_disabled = " disabled" if i == 0 else ""
-        down_disabled = " disabled" if i == total - 1 else ""
-        name = escape(c.name)
-        items.append(f"""<li style="display: flex; justify-content: space-between; align-items: center; padding: 8px 10px;">
-            <span>{name}</span>
-            <div style="display: flex; gap: 4px;">
-                <button{up_disabled} hx-post="/ui/divisions/{div_id}/competitors/{c.id}/move" hx-vals='{{"direction":"up"}}' hx-target="#competitor-list" hx-swap="innerHTML" style="padding: 2px 8px; font-size: 0.8rem; width: auto; background: #64748b;">&#8593;</button>
-                <button{down_disabled} hx-post="/ui/divisions/{div_id}/competitors/{c.id}/move" hx-vals='{{"direction":"down"}}' hx-target="#competitor-list" hx-swap="innerHTML" style="padding: 2px 8px; font-size: 0.8rem; width: auto; background: #64748b;">&#8595;</button>
-                <button class="danger-btn" hx-delete="/ui/divisions/{div_id}/competitors/{c.id}" hx-target="#competitor-list" hx-swap="innerHTML" hx-confirm="Remove {name} from this division?" style="padding: 2px 8px; font-size: 0.8rem; width: auto;">&times;</button>
-            </div>
-        </li>""")
-    return "\n".join(items)
+    return render_template("_competitors_list.html", competitors=competitors, div_id=div_id)
 
 
 def _division_name_display_html(division):
     """Return HTML fragment for the division name with inline rename controls."""
-    name = escape(division.name)
-    return f"""<h1 style="margin: 0; color: #0f172a;">{name}</h1>
-<button hx-get="/ui/divisions/{division.id}/name_form" hx-target="#division-name-header" hx-swap="innerHTML" style="background: #64748b; padding: 5px 12px; width: auto; font-size: 0.85rem; margin-left: 12px;">Rename</button>"""
+    return render_template("_division_name_display.html", division=division)
 
 
 def _scorekeeper_match_card_html(match):
@@ -333,21 +315,7 @@ def generate_bracket(div_id):
     # Commit everything to the database
     db.session.commit()
     # Return a success message with links to manage or regenerate the bracket
-    return f"""
-    <div style="padding: 15px; background: #d1fae5; color: #065f46; border-radius: 4px;">
-        <strong>Success!</strong> Bracket generated for {num_comp} competitors.
-        <br><br>
-        <a href="/admin/divisions/{div_id}/bracket_manage" style="display: inline-block; background: #059669; color: white; padding: 8px 16px; text-decoration: none; border-radius: 4px; margin-top: 10px;">
-            Manage &amp; Schedule Bracket
-        </a>
-    </div>
-    <button class="generate-btn" style="background: #f59e0b; margin-top: 10px;"
-            hx-post="/divisions/{div_id}/generate_bracket"
-            hx-target="#bracket-controls" hx-swap="innerHTML"
-            hx-confirm="Regenerate bracket? This will delete all existing match data and cannot be undone.">
-        Regenerate Bracket
-    </button>
-    """
+    return render_template("_bracket_generate_success.html", div_id=div_id, num_comp=num_comp)
 
 
 @app.route("/divisions/<int:div_id>/bracket", methods=["GET"])
@@ -506,7 +474,7 @@ def get_bracket_ui(div_id):
     )
 
     if not matches:
-        return "<p>No bracket generated yet.</p>", 404
+        return render_template("_bracket_empty.html"), 404
 
     # Enrich matches with competitor names for template rendering
     for match in matches:
@@ -680,60 +648,7 @@ def ui_public_rings():
         else:
             ring_data[-1]["poomsae_items"] = []
 
-    html = """
-    {% for ring in rings %}
-    <div class="ring-card">
-        <h2>{{ ring.name }}</h2>
-        {% if ring.last_completed %}
-            <strong>{{ ring.last_completed.match_number }}</strong> - <a href="/ui/divisions/{{ ring.last_completed.division.id }}/bracket">{{ ring.last_completed.division.name }}</a> ({{ ring.last_completed.round_short }})
-            <div class="match-item match-item-completed">
-                <div>
-                    <div><font style="color: #252ceb; font-weight: bold;">{{ ring.last_completed.comp_1 }}</font> <span class="result-indicator {% if ring.last_completed.comp_1_result == 'W' %}result-win{% elif ring.last_completed.comp_1_result == 'L' %}result-loss{% else %}result-neutral{% endif %}">{{ ring.last_completed.comp_1_result }}</span></div>
-                    <div><font style="color: #eb2525; font-weight: bold;">{{ ring.last_completed.comp_2 }}</font> <span class="result-indicator {% if ring.last_completed.comp_2_result == 'W' %}result-win{% elif ring.last_completed.comp_2_result == 'L' %}result-loss{% else %}result-neutral{% endif %}">{{ ring.last_completed.comp_2_result }}</span></div>
-                </div>
-                <span class="status-completed">{{ ring.last_completed.status }}</span>
-            </div>
-        {% endif %}
-        {% if not ring.matches and not ring.poomsae_items %}
-            {% if not ring.last_completed %}
-                <p style="color: #94a3b8;">No upcoming matches.</p>
-            {% endif %}
-        {% endif %}
-        {% for match in ring.matches %}
-            <strong>{{ match.match_number }}</strong> - <a href="/ui/divisions/{{ match.division.id }}/bracket">{{ match.division.name }}</a> ({{ match.round_short }})
-            <div class="match-item">
-                <span class="match-competitors"><font style="color: #252ceb; font-weight: bold;">{{ match.comp_1 }}</font> vs <font style="color: #eb2525; font-weight: bold;">{{ match.comp_2 }}</font></span>
-                <span class="{% if match.status == 'In Progress' %}status-in-progress{% else %}status-pending{% endif %}">
-                    {{ match.status }}
-                </span>
-            </div>
-        {% endfor %}
-        {% for item in ring.poomsae_items %}
-            {% if item.kind == 'match' %}
-                {% set match = item.obj %}
-                <strong>{{ match.match_number }}</strong> - <a href="/ui/divisions/{{ match.division.id }}/bracket">{{ match.division.name }}</a> ({{ match.round_short }})
-                <div class="match-item">
-                    <span class="match-competitors"><font style="color: #252ceb; font-weight: bold;">{{ match.comp_1 }}</font> vs <font style="color: #eb2525; font-weight: bold;">{{ match.comp_2 }}</font></span>
-                    <span class="{% if match.status == 'In Progress' %}status-in-progress{% else %}status-pending{% endif %}">
-                        {{ match.status }}
-                    </span>
-                </div>
-            {% else %}
-                {% set division = item.obj %}
-                <a href="/admin/divisions/{{ division.id }}/poomsae_results" style="text-decoration: none; color: inherit;">
-                    <div class="match-item" style="cursor: pointer;">
-                        <span style="font-weight: 600;">{{ division.name }}</span>
-                        <span class="{% if division.event_status == 'In Progress' %}status-in-progress{% elif division.event_status == 'Completed' %}status-completed{% else %}status-pending{% endif %}">
-                            {{ division.event_status }}
-                        </span>
-                    </div>
-                </a>
-            {% endif %}
-        {% endfor %}
-    </div>
-    {% endfor %}
-    """
-    return render_template_string(html, rings=ring_data)
+    return render_template("_public_rings_fragment.html", rings=ring_data)
 
 
 # 2. Results Divisions Fragment
@@ -782,44 +697,14 @@ def ui_add_ring():
     db.session.add(new_ring)
     db.session.commit()
 
-    return f"""
-    <li>
-        <span>{new_ring.name}</span>
-        <button class="danger-btn" 
-                hx-delete="/ui/rings/{new_ring.id}" 
-                hx-target="closest li" 
-                hx-swap="outerHTML"
-                hx-confirm="Are you sure you want to delete {new_ring.name}?">
-            Delete
-        </button>
-    </li>
-    """
+    return render_template("_ring_list_item.html", ring=new_ring, include_scorekeeper=False)
 
 
 @app.route("/ui/rings_list")
 @login_required
 def ui_rings_list():
     rings = Ring.query.all()
-    html = ""
-    for r in rings:
-        html += f"""
-        <li>
-            <span>{r.name}</span>
-            <div>
-                <a href="/ring/{r.id}/scorekeeper" class="button" style="text-decoration: none; display: inline-block;">
-                    Score Keeper
-                </a>
-                <button class="danger-btn" 
-                        hx-delete="/ui/rings/{r.id}" 
-                        hx-target="closest li" 
-                        hx-swap="outerHTML"
-                        hx-confirm="Are you sure you want to delete {r.name}?">
-                    Delete
-                </button>
-            </div>
-        </li>
-        """
-    return html
+    return render_template("_rings_list.html", rings=rings, include_scorekeeper=True)
 
 
 @app.route("/ui/rings/<int:ring_id>", methods=["DELETE"])
@@ -846,23 +731,7 @@ def ui_add_division():
     db.session.add(new_div)
     db.session.commit()
 
-    return f"""
-    <li>
-        <span>{escape(new_div.name)}</span>
-        <div>
-            <a href="/admin/divisions/{new_div.id}/setup" class="button" style="text-decoration: none; display: inline-block;">
-                Manage
-            </a>
-            <button class="danger-btn" 
-                    hx-delete="/ui/divisions/{new_div.id}" 
-                    hx-target="closest li" 
-                    hx-swap="outerHTML"
-                    hx-confirm="Delete division '{escape(new_div.name)}' and all its matches?">
-                Delete
-            </button>
-        </div>
-    </li>
-    """
+    return render_template("_division_list_item.html", division=new_div)
 
 
 @app.route("/ui/divisions_list")
@@ -875,26 +744,7 @@ def ui_divisions_list():
     if event_type:
         query = query.filter_by(event_type=event_type)
     divisions = query.all()
-    html = ""
-    for d in divisions:
-        html += f"""
-        <li>
-            <span>{escape(d.name)}</span>
-            <div>
-                <a href="/admin/divisions/{d.id}/setup" class="button" style="text-decoration: none; display: inline-block;">
-                Manage
-            </a>
-                <button class="danger-btn" 
-                        hx-delete="/ui/divisions/{d.id}" 
-                        hx-target="closest li" 
-                        hx-swap="outerHTML"
-                        hx-confirm="Delete division '{escape(d.name)}' and all its matches?">
-                    Delete
-                </button>
-            </div>
-        </li>
-        """
-    return html
+    return render_template("_divisions_list.html", divisions=divisions)
 
 
 @app.route("/ui/divisions/<int:div_id>", methods=["DELETE"])
@@ -995,12 +845,7 @@ def ui_move_competitor(div_id, comp_id):
 @login_required
 def ui_division_name_form(div_id):
     division = Division.query.get_or_404(div_id)
-    name = escape(division.name)
-    return f"""<form hx-patch="/ui/divisions/{div_id}/name" hx-target="#division-name-header" hx-swap="innerHTML" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-    <input type="text" name="name" value="{name}" required style="padding: 5px 8px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 1.2rem; flex: 1; min-width: 200px;">
-    <button type="submit" style="background: #10b981; padding: 5px 12px; width: auto; font-size: 0.9rem;">Save</button>
-    <button type="button" hx-get="/ui/divisions/{div_id}/name_display" hx-target="#division-name-header" hx-swap="innerHTML" style="background: #64748b; padding: 5px 12px; width: auto; font-size: 0.9rem;">Cancel</button>
-</form>"""
+    return render_template("_division_name_form.html", division=division)
 
 
 @app.route("/ui/divisions/<int:div_id>/name_display")
@@ -1077,77 +922,36 @@ def schedule_match_htmx(match_id):
             )
         if duplicate or conflicting_division:
             rings = Ring.query.all()
-            ring_options = "".join(
-                [f'<option value="{r.id}" {"selected" if r.id == ring_id_int else ""}>{escape(r.name)}</option>' for r in rings]
-            )
-            chung_name = escape(match.competitor1.name) if match.competitor1 else "TBD"
-            hong_name = escape(match.competitor2.name) if match.competitor2 else "TBD"
             # Build a descriptive name for whatever is already using this slot
             if conflicting_division:
-                conflict_name = escape(conflicting_division.name)
+                conflict_name = conflicting_division.name
             else:
                 # A bracket match from another division occupies this number
-                conflict_name = escape(duplicate.division.name)
-            return f"""
-    <div class="match-card" id="match-{match.id}">
-        <div class="match-body">
-            <div><font style="color: #252ceb; font-weight: bold;">Chung</font>: {chung_name}</div>
-            <div><font style="color: #eb2525; font-weight: bold;">Hong</font>: {hong_name}</div>
-        </div>
-        <div class="schedule-form">
-            <div style="margin-bottom: 8px; color: #dc2626; font-weight: bold;">
-                Error: Sequence {ring_sequence_int} is already used by "{conflict_name}" in this ring.
-            </div>
-            <form hx-put="/matches/{match.id}/schedule" hx-target="#match-{match.id}"
-                        hx-swap="outerHTML" style="display: flex; gap: 5px;">
-                <select name="ring_id" required style="flex: 1;">
-                    <option value="">Select Ring...</option>
-                    {ring_options}
-                </select>
-                <input type="number" name="ring_sequence" value="{ring_sequence_int}" required
-                    style="width: 80px;">
-                <button type="submit" class="save-btn">Save</button>
-            </form>
-        </div>
-    </div>
-    """
+                conflict_name = duplicate.division.name
+            return render_template(
+                "_match_schedule_card.html",
+                match=match,
+                rings=rings,
+                selected_ring_id=ring_id_int,
+                ring_sequence_value=ring_sequence_int,
+                scheduled_label=(f"Match {match.match_number}" if match.match_number else "Unassigned"),
+                error_message=(f'Error: Sequence {ring_sequence_int} is already used by "{conflict_name}" in this ring.'),
+            )
         match.ring_id = ring_id_int
         match.match_number = proposed_match_number
         db.session.commit()
 
     # Fetch rings again to populate the dropdown in the response
     rings = Ring.query.all()
-    ring_options = "".join(
-        [f'<option value="{r.id}" {"selected" if r.id == match.ring_id else ""}>{escape(r.name)}</option>' for r in rings]
+    return render_template(
+        "_match_schedule_card.html",
+        match=match,
+        rings=rings,
+        selected_ring_id=match.ring_id,
+        ring_sequence_value=(match.match_number - match.ring_id * 100 if match.match_number and match.ring_id else ""),
+        scheduled_label=(f"Match {match.match_number}" if match.match_number else "Unassigned"),
+        error_message=None,
     )
-    chung_name = escape(match.competitor1.name) if match.competitor1 else "TBD"
-    hong_name = escape(match.competitor2.name) if match.competitor2 else "TBD"
-
-    # Return the updated match card HTML
-    return f"""
-    <div class="match-card" id="match-{match.id}">
-        <div class="match-body">
-            <div><font style="color: #252ceb; font-weight: bold;">Chung</font>: {chung_name}</div>
-            <div><font style="color: #eb2525; font-weight: bold;">Hong</font>: {hong_name}</div>
-        </div>
-        
-        <div class="schedule-form">
-            <div style="margin-bottom: 8px; font-weight: bold; color: #2563eb;">
-                Scheduled: {"Match " + str(match.match_number) if match.match_number else "Unassigned"}
-            </div>
-            <form hx-put="/matches/{match.id}/schedule" hx-target="#match-{match.id}"
-                        hx-swap="outerHTML" style="display: flex; gap: 5px;">
-                <select name="ring_id" required style="flex: 1;">
-                    <option value="">Select Ring...</option>
-                    {ring_options}
-                </select>
-                <input type="number" name="ring_sequence" value="{match.match_number - match.ring_id * 100 if match.match_number else ''}" required
-                    style="width: 80px;">
-                <button type="submit" class="save-btn">Save</button>
-            </form>
-        </div>
-    </div>
-    """
 
 
 # --- SCOREKEEPER ROUTES ---
@@ -1179,7 +983,10 @@ def ui_record_result(match_id):
     match = Match.query.get_or_404(match_id)
 
     if not match.competitor1_id or not match.competitor2_id:
-        return "<div style='color: red;'>Error: Cannot submit result for a match with TBD competitors.</div>", 400
+        return render_template(
+            "_inline_error.html",
+            message="Error: Cannot submit result for a match with TBD competitors.",
+        ), 400
 
     status = request.form.get("status")
     winner_id = request.form.get("winner_id")
@@ -1203,7 +1010,7 @@ def ui_record_result(match_id):
 
     if status in ["Completed", "Disqualification"]:
         if not winner_id:
-            return "<div style='color: red;'>Error: Winner must be selected.</div>", 400
+            return render_template("_inline_error.html", message="Error: Winner must be selected."), 400
 
         match.status = status
         match.winner_id = int(winner_id)
@@ -1238,38 +1045,26 @@ def ui_record_result(match_id):
             "scorekeeper_matches_fragment.html", matches=remaining_matches
         )
 
-        winner_name = escape(winner.name)
+        winner_name = winner.name
         match_number = match.match_number
 
         if match.round_name == "Final":
-            result_message = f'<strong>{winner_name}</strong> wins gold!'
+            result_message = "wins gold!"
         else:
-            result_message = f'<strong>{winner_name}</strong> advances to the next round!'
-
-        notification_html = (
-            f'<div class="result-notification-content">'
-            f'<h3 style="margin-top: 0;">Match {match_number} Complete</h3>'
-            f'<p>{result_message}</p>'
-            f'</div>'
-        )
+            result_message = "advances to the next round!"
 
         # Return main swap (removes match card) + OOB swaps for notification and
         # refreshed matches list so other cards reflect any bracket advancement.
         # For poomsae, also refresh the unified poomsae container since it contains
         # both bracket matches and group divisions interleaved.
-        is_poomsae = match.division.event_type == "poomsae"
-        oob_container_html = (
-            f'<div id="poomsae-divisions-container"'
-            f' hx-get="/ui/rings/{match.ring_id}/poomsae_divisions"'
-            f' hx-trigger="load" hx-swap="innerHTML"'
-            f' hx-swap-oob="outerHTML"></div>'
-            if is_poomsae
-            else f'<div id="matches-container" hx-swap-oob="innerHTML">{matches_html}</div>'
-        )
-        return (
-            f'<!-- match {match_number} completed -->'
-            f'<div id="result-notification" hx-swap-oob="innerHTML">{notification_html}</div>'
-            f'{oob_container_html}'
+        return render_template(
+            "_scorekeeper_result_oob.html",
+            match=match,
+            match_number=match_number,
+            winner_name=winner_name,
+            result_message=result_message,
+            matches_html=matches_html,
+            is_poomsae=(match.division.event_type == "poomsae"),
         )
 
 
@@ -1500,7 +1295,7 @@ def ui_ring_poomsae_divisions(ring_id):
     ).all()
 
     if not bracket_matches and not group_divisions:
-        return '<div class="empty-state">No poomsae divisions assigned to this ring.</div>'
+        return render_template("_empty_state.html", message="No poomsae divisions assigned to this ring.")
 
     # Build a unified list of (sequence, html) items so both types interleave correctly.
     # Bracket match sequence = match_number % 100 (the sequence portion of ring_id*100 + seq).

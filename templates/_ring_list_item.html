@@ -1,0 +1,19 @@
+<li>
+    <span>{{ ring.name }}</span>
+    {% if include_scorekeeper %}
+    <div>
+        <a href="/ring/{{ ring.id }}/scorekeeper" class="button" style="text-decoration: none; display: inline-block;">
+            Score Keeper
+        </a>
+        <button class="danger-btn" hx-delete="/ui/rings/{{ ring.id }}" hx-target="closest li" hx-swap="outerHTML"
+            hx-confirm="Are you sure you want to delete {{ ring.name }}?">
+            Delete
+        </button>
+    </div>
+    {% else %}
+    <button class="danger-btn" hx-delete="/ui/rings/{{ ring.id }}" hx-target="closest li" hx-swap="outerHTML"
+        hx-confirm="Are you sure you want to delete {{ ring.name }}?">
+        Delete
+    </button>
+    {% endif %}
+</li>

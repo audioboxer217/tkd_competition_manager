@@ -1,0 +1,9 @@
+{% if not competitors %}
+<li style="color: #94a3b8;">No competitors added yet.</li>
+{% else %}
+{% set total_competitors = competitors|length %}
+{% for competitor in competitors %}
+{% set competitor_index = loop.index0 %}
+{% include "_competitor_list_item.html" %}
+{% endfor %}
+{% endif %}

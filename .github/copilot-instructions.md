@@ -51,7 +51,8 @@ This is a lightweight, web-based **Taekwondo Competition Manager** built with Py
   - `/ui/...` — HTMX fragment routes that return partial HTML
   - `/admin/...` — Admin page routes that return full HTML templates
   - `/divisions/...`, `/rings/...`, `/matches/...` — JSON API routes
-- HTMX responses return HTML fragments (not JSON); use `render_template_string` or f-strings for simple fragments
+- HTMX responses return HTML fragments (not JSON)
+- Always use template files from the `templates/` directory for rendering HTML; avoid inline HTML in route handlers
 - Use Flask-SQLAlchemy ORM patterns; avoid raw SQL
 
 ## Authentication
