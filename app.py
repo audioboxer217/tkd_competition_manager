@@ -902,8 +902,9 @@ def manage_bracket_page(div_id):
         grouped_matches[match.round_name].append(match)
 
     sorted_rounds = dict(sorted(grouped_matches.items(), key=lambda x: _round_sort_key(x[0]), reverse=True))
+    current_ring = Ring.query.get(division.ring_id) if division.ring_id else None
 
-    return render_template("bracket_manage.html", division=division, rounds=sorted_rounds, rings=rings)
+    return render_template("bracket_manage.html", division=division, rounds=sorted_rounds, rings=rings, current_ring=current_ring)
 
 @app.route("/ui/divisions/<int:div_id>/bracket_ring", methods=["PATCH"])
 @login_required
