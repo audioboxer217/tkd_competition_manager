@@ -1004,12 +1004,13 @@ class TestUIMatchResult:
         _add_competitors(client, div_id, ["Alice", "Bob", "Carol", "Dave"])
         _generate_bracket(client, div_id)
 
-        # Schedule all matches to the ring so they appear in the matches refresh
+        # Assign ring to the division, then schedule all matches
+        client.patch(f"/ui/divisions/{div_id}/bracket_ring", data={"ring_id": str(ring_id)})
         all_matches = Match.query.filter_by(division_id=div_id).order_by(Match.match_number).all()
         for seq, m in enumerate(all_matches, start=1):
             client.put(
                 f"/matches/{m.id}/schedule",
-                data={"ring_id": str(ring_id), "ring_sequence": str(seq)},
+                data={"ring_sequence": str(seq)},
             )
 
         first_match = Match.query.filter_by(division_id=div_id, round_name="Semi-Final").first()
@@ -1095,11 +1096,12 @@ class TestUIMatchResult:
         )
         assert len(matches) >= 2
 
-        # Schedule both matches to the same ring
+        # Assign ring to the division, then schedule both matches to the same ring
+        client.patch(f"/ui/divisions/{div_id}/bracket_ring", data={"ring_id": str(ring_id)})
         for seq, match in enumerate(matches[:2], start=1):
             client.put(
                 f"/matches/{match.id}/schedule",
-                data={"ring_id": str(ring_id), "ring_sequence": str(seq)},
+                data={"ring_sequence": str(seq)},
             )
 
         first_match, second_match = matches[0], matches[1]
@@ -1128,24 +1130,21 @@ class TestUIMatchResult:
         """Starting a match when another ring has an In Progress match is allowed."""
         ring1_id = _create_ring(client, "Ring 1").get_json()["id"]
         ring2_id = _create_ring(client, "Ring 2").get_json()["id"]
-        div_id = _create_division(client).get_json()["id"]
-        _add_competitors(client, div_id, ["Alice", "Bob", "Carol", "Dave"])
-        _generate_bracket(client, div_id)
+        div1_id = _create_division(client, "Division A").get_json()["id"]
+        div2_id = _create_division(client, "Division B").get_json()["id"]
+        _add_competitors(client, div1_id, ["Alice", "Bob"])
+        _add_competitors(client, div2_id, ["Carol", "Dave"])
+        _generate_bracket(client, div1_id)
+        _generate_bracket(client, div2_id)
 
-        matches = Match.query.filter_by(division_id=div_id, status="Pending").all()
-        assert len(matches) >= 2
+        first_match = Match.query.filter_by(division_id=div1_id, status="Pending").first()
+        second_match = Match.query.filter_by(division_id=div2_id, status="Pending").first()
 
-        first_match, second_match = matches[0], matches[1]
-
-        # Schedule matches to different rings
-        client.put(
-            f"/matches/{first_match.id}/schedule",
-            data={"ring_id": str(ring1_id), "ring_sequence": "1"},
-        )
-        client.put(
-            f"/matches/{second_match.id}/schedule",
-            data={"ring_id": str(ring2_id), "ring_sequence": "1"},
-        )
+        # Assign different rings to each division and schedule
+        client.patch(f"/ui/divisions/{div1_id}/bracket_ring", data={"ring_id": str(ring1_id)})
+        client.patch(f"/ui/divisions/{div2_id}/bracket_ring", data={"ring_id": str(ring2_id)})
+        client.put(f"/matches/{first_match.id}/schedule", data={"ring_sequence": "1"})
+        client.put(f"/matches/{second_match.id}/schedule", data={"ring_sequence": "1"})
 
         # Start first match on ring 1
         resp = client.post(
@@ -1179,10 +1178,13 @@ class TestMatchSchedule:
         _add_competitors(client, div_id, ["Alice", "Bob"])
         _generate_bracket(client, div_id)
 
+        # Assign ring to the division first
+        client.patch(f"/ui/divisions/{div_id}/bracket_ring", data={"ring_id": str(ring_id)})
+
         match = Match.query.filter_by(division_id=div_id).first()
         resp = client.put(
             f"/matches/{match.id}/schedule",
-            data={"ring_id": str(ring_id), "ring_sequence": "25"},
+            data={"ring_sequence": "25"},
         )
         assert resp.status_code == 200
         assert b"match-card" in resp.data
@@ -1190,9 +1192,26 @@ class TestMatchSchedule:
     def test_schedule_match_not_found(self, client):
         resp = client.put(
             "/matches/9999/schedule",
-            data={"ring_id": "1", "ring_sequence": "1"},
+            data={"ring_sequence": "1"},
         )
         assert resp.status_code == 404
+
+    def test_schedule_match_no_ring_on_division(self, client):
+        _create_ring(client, "Ring 1")
+        div_id = _create_division(client).get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _generate_bracket(client, div_id)
+
+        match = Match.query.filter_by(division_id=div_id).first()
+        # No ring assigned to division — should return error in card
+        resp = client.put(
+            f"/matches/{match.id}/schedule",
+            data={"ring_sequence": "5"},
+        )
+        assert resp.status_code == 200
+        assert b"Error" in resp.data
+        assert b"No ring assigned" in resp.data
+        assert match.match_number is None
 
     def test_schedule_duplicate_match_number(self, client):
         ring_id = _create_ring(client, "Ring 1").get_json()["id"]
@@ -1203,13 +1222,17 @@ class TestMatchSchedule:
         _generate_bracket(client, div_id1)
         _generate_bracket(client, div_id2)
 
+        # Assign the same ring to both divisions
+        client.patch(f"/ui/divisions/{div_id1}/bracket_ring", data={"ring_id": str(ring_id)})
+        client.patch(f"/ui/divisions/{div_id2}/bracket_ring", data={"ring_id": str(ring_id)})
+
         match1 = Match.query.filter_by(division_id=div_id1).first()
         match2 = Match.query.filter_by(division_id=div_id2).first()
 
         # Schedule first match successfully
         resp1 = client.put(
             f"/matches/{match1.id}/schedule",
-            data={"ring_id": str(ring_id), "ring_sequence": "1"},
+            data={"ring_sequence": "1"},
         )
         assert resp1.status_code == 200
         assert match1.match_number == (ring_id * 100) + 1
@@ -1217,7 +1240,7 @@ class TestMatchSchedule:
         # Attempt to assign the same match number to a second match
         resp2 = client.put(
             f"/matches/{match2.id}/schedule",
-            data={"ring_id": str(ring_id), "ring_sequence": "1"},
+            data={"ring_sequence": "1"},
         )
         assert resp2.status_code == 200
         assert b"Error" in resp2.data
@@ -1229,12 +1252,61 @@ class TestMatchSchedule:
         _add_competitors(client, div_id, ["Alice", "Bob"])
         _generate_bracket(client, div_id)
 
+        # Assign ring to the division first
+        client.patch(f"/ui/divisions/{div_id}/bracket_ring", data={"ring_id": str(ring_id)})
+
         match = Match.query.filter_by(division_id=div_id).first()
         resp = client.put(
             f"/matches/{match.id}/schedule",
-            data={"ring_id": str(ring_id), "ring_sequence": "100"},
+            data={"ring_sequence": "100"},
         )
         assert resp.status_code == 400
+
+
+class TestBracketRingAssignment:
+    def test_bracket_ring_assign(self, client):
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_id = _create_division(client).get_json()["id"]
+        resp = client.patch(f"/ui/divisions/{div_id}/bracket_ring", data={"ring_id": str(ring_id)})
+        assert resp.status_code == 200
+        assert b"Ring 1" in resp.data
+        from app import Division
+        division = Division.query.get(div_id)
+        assert division.ring_id == ring_id
+
+    def test_bracket_ring_unassign(self, client):
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_id = _create_division(client).get_json()["id"]
+        # Assign first
+        client.patch(f"/ui/divisions/{div_id}/bracket_ring", data={"ring_id": str(ring_id)})
+        # Unassign
+        resp = client.patch(f"/ui/divisions/{div_id}/bracket_ring", data={"ring_id": ""})
+        assert resp.status_code == 200
+        from app import Division
+        division = Division.query.get(div_id)
+        assert division.ring_id is None
+
+    def test_bracket_ring_not_found(self, client):
+        resp = client.patch("/ui/divisions/9999/bracket_ring", data={"ring_id": "1"})
+        assert resp.status_code == 404
+
+    def test_bracket_ring_invalid_value(self, client):
+        div_id = _create_division(client).get_json()["id"]
+        resp = client.patch(f"/ui/divisions/{div_id}/bracket_ring", data={"ring_id": "notanumber"})
+        assert resp.status_code == 400
+
+    def test_bracket_manage_page_shows_ring_assignment(self, client):
+        ring_id = _create_ring(client, "Ring 2").get_json()["id"]
+        div_id = _create_division(client).get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _generate_bracket(client, div_id)
+        # Assign ring at bracket level
+        client.patch(f"/ui/divisions/{div_id}/bracket_ring", data={"ring_id": str(ring_id)})
+        resp = client.get(f"/admin/divisions/{div_id}/bracket_manage")
+        assert resp.status_code == 200
+        assert b"bracket-ring-assignment" in resp.data
+        assert b"Ring Assignment" in resp.data
+        assert b"Ring 2" in resp.data
 
 
 # ---------------------------------------------------------------------------
@@ -1472,13 +1544,17 @@ class TestEventTypes:
         _generate_bracket(client, div_kyorugi)
         _generate_bracket(client, div_poomsae)
 
+        # Assign ring to each division, then schedule
+        client.patch(f"/ui/divisions/{div_kyorugi}/bracket_ring", data={"ring_id": str(ring_id)})
+        client.patch(f"/ui/divisions/{div_poomsae}/bracket_ring", data={"ring_id": str(ring_id)})
+
         match_k = Match.query.filter_by(division_id=div_kyorugi).first()
         match_p = Match.query.filter_by(division_id=div_poomsae).first()
 
         # Schedule match_number 101 in kyorugi (ring 1 * 100 + 1)
         resp1 = client.put(
             f"/matches/{match_k.id}/schedule",
-            data={"ring_id": str(ring_id), "ring_sequence": "1"},
+            data={"ring_sequence": "1"},
         )
         assert resp1.status_code == 200
         assert b"Error" not in resp1.data
@@ -1488,7 +1564,7 @@ class TestEventTypes:
         # Schedule the same match_number 101 in poomsae — must succeed (different event)
         resp2 = client.put(
             f"/matches/{match_p.id}/schedule",
-            data={"ring_id": str(ring_id), "ring_sequence": "1"},
+            data={"ring_sequence": "1"},
         )
         assert resp2.status_code == 200
         assert b"Error" not in resp2.data
@@ -1508,16 +1584,20 @@ class TestEventTypes:
         match1 = Match.query.filter_by(division_id=div1).first()
         match2 = Match.query.filter_by(division_id=div2).first()
 
+        # Assign the same ring to both divisions
+        client.patch(f"/ui/divisions/{div1}/bracket_ring", data={"ring_id": str(ring_id)})
+        client.patch(f"/ui/divisions/{div2}/bracket_ring", data={"ring_id": str(ring_id)})
+
         client.put(
             f"/matches/{match1.id}/schedule",
-            data={"ring_id": str(ring_id), "ring_sequence": "5"},
+            data={"ring_sequence": "5"},
         )
         db.session.refresh(match1)
         assert match1.match_number == (ring_id * 100) + 5
 
         resp2 = client.put(
             f"/matches/{match2.id}/schedule",
-            data={"ring_id": str(ring_id), "ring_sequence": "5"},
+            data={"ring_sequence": "5"},
         )
         assert resp2.status_code == 200
         assert b"Error" in resp2.data
@@ -1544,11 +1624,12 @@ class TestEventTypes:
         _add_competitors(client, div_id, ["Alice", "Bob", "Carol"])
         _generate_bracket(client, div_id)
 
-        # Schedule all matches to the ring
+        # Assign ring to division and schedule all matches
+        client.patch(f"/ui/divisions/{div_id}/bracket_ring", data={"ring_id": str(ring_id)})
         for seq, match in enumerate(Match.query.filter_by(division_id=div_id).all(), start=1):
             client.put(
                 f"/matches/{match.id}/schedule",
-                data={"ring_id": str(ring_id), "ring_sequence": str(seq)},
+                data={"ring_sequence": str(seq)},
             )
 
         resp = client.get(f"/ring/{ring_id}/scorekeeper")
@@ -1568,9 +1649,11 @@ class TestEventTypes:
         ).first()
         assert tbd_match is not None
 
+        # Assign ring to division, then schedule the TBD match
+        client.patch(f"/ui/divisions/{div_id}/bracket_ring", data={"ring_id": str(ring_id)})
         client.put(
             f"/matches/{tbd_match.id}/schedule",
-            data={"ring_id": str(ring_id), "ring_sequence": "1"},
+            data={"ring_sequence": "1"},
         )
 
         resp = client.get(f"/ring/{ring_id}/scorekeeper")
@@ -1586,9 +1669,10 @@ class TestEventTypes:
         _generate_bracket(client, div_id)
 
         match = Match.query.filter_by(division_id=div_id).first()
+        client.patch(f"/ui/divisions/{div_id}/bracket_ring", data={"ring_id": str(ring_id)})
         client.put(
             f"/matches/{match.id}/schedule",
-            data={"ring_id": str(ring_id), "ring_sequence": "1"},
+            data={"ring_sequence": "1"},
         )
 
         resp = client.get(f"/ring/{ring_id}/scorekeeper")
@@ -1611,13 +1695,15 @@ class TestEventTypes:
         match_k = Match.query.filter_by(division_id=div_kyorugi).first()
         match_p = Match.query.filter_by(division_id=div_poomsae).first()
 
+        client.patch(f"/ui/divisions/{div_kyorugi}/bracket_ring", data={"ring_id": str(ring_id)})
+        client.patch(f"/ui/divisions/{div_poomsae}/bracket_ring", data={"ring_id": str(ring_id)})
         client.put(
             f"/matches/{match_k.id}/schedule",
-            data={"ring_id": str(ring_id), "ring_sequence": "1"},
+            data={"ring_sequence": "1"},
         )
         client.put(
             f"/matches/{match_p.id}/schedule",
-            data={"ring_id": str(ring_id), "ring_sequence": "2"},
+            data={"ring_sequence": "2"},
         )
 
         resp_k = client.get(f"/ring/{ring_id}/scorekeeper?event_type=kyorugi")
@@ -2894,8 +2980,9 @@ class TestPoomsaeUnifiedRingOrder:
         _generate_bracket(client, div_id)
 
         match = Match.query.filter_by(division_id=div_id).first()
+        client.patch(f"/ui/divisions/{div_id}/bracket_ring", data={"ring_id": str(ring_id)})
         client.put(f"/matches/{match.id}/schedule",
-                   data={"ring_id": str(ring_id), "ring_sequence": "5"})
+                   data={"ring_sequence": "5"})
 
         resp = client.get(f"/ui/rings/{ring_id}/poomsae_divisions")
         assert resp.status_code == 200
@@ -2911,8 +2998,9 @@ class TestPoomsaeUnifiedRingOrder:
         _set_poomsae_style(client, div_bracket, "bracket")
         _generate_bracket(client, div_bracket)
         match = Match.query.filter_by(division_id=div_bracket).first()
+        client.patch(f"/ui/divisions/{div_bracket}/bracket_ring", data={"ring_id": str(ring_id)})
         client.put(f"/matches/{match.id}/schedule",
-                   data={"ring_id": str(ring_id), "ring_sequence": "5"})
+                   data={"ring_sequence": "5"})
 
         # Group poomsae division at sequence 3
         div_group = _create_division(client, "Group Poomsae", "poomsae").get_json()["id"]
@@ -2938,8 +3026,9 @@ class TestPoomsaeUnifiedRingOrder:
         _set_poomsae_style(client, div_bracket, "bracket")
         _generate_bracket(client, div_bracket)
         match = Match.query.filter_by(division_id=div_bracket).first()
+        client.patch(f"/ui/divisions/{div_bracket}/bracket_ring", data={"ring_id": str(ring_id)})
         client.put(f"/matches/{match.id}/schedule",
-                   data={"ring_id": str(ring_id), "ring_sequence": "1"})
+                   data={"ring_sequence": "1"})
 
         # Group division with no sequence
         div_group = _create_division(client, "Group Last", "poomsae").get_json()["id"]
@@ -2953,8 +3042,6 @@ class TestPoomsaeUnifiedRingOrder:
 
         # Bracket First (seq=1) before Group Last (no seq)
         assert html.find("Bracket First") < html.find("Group Last")
-
-    def test_poomsae_scorekeeper_uses_unified_container(self, client):
         """Poomsae scorekeeper page uses the unified poomsae-divisions-container
         rather than the separate matches-container for displaying content."""
         ring_id = _create_ring(client, "Ring 1").get_json()["id"]
@@ -2997,8 +3084,9 @@ class TestPoomsaeLiveViewOrdering:
         _set_poomsae_style(client, div_bracket, "bracket")
         _generate_bracket(client, div_bracket)
         match = Match.query.filter_by(division_id=div_bracket).first()
+        client.patch(f"/ui/divisions/{div_bracket}/bracket_ring", data={"ring_id": str(ring_id)})
         client.put(f"/matches/{match.id}/schedule",
-                   data={"ring_id": str(ring_id), "ring_sequence": "5"})
+                   data={"ring_sequence": "5"})
 
         # Group division at sequence 2
         div_group = _create_division(client, "Group Div", "poomsae").get_json()["id"]
@@ -3043,8 +3131,9 @@ class TestPoomsaeLiveViewOrdering:
         _set_poomsae_style(client, div_bracket, "bracket")
         _generate_bracket(client, div_bracket)
         match = Match.query.filter_by(division_id=div_bracket).first()
+        client.patch(f"/ui/divisions/{div_bracket}/bracket_ring", data={"ring_id": str(ring_id)})
         client.put(f"/matches/{match.id}/schedule",
-                   data={"ring_id": str(ring_id), "ring_sequence": "1"})
+                   data={"ring_sequence": "1"})
 
         # Group division with no sequence
         div_group = _create_division(client, "Group Last", "poomsae").get_json()["id"]
@@ -3081,8 +3170,10 @@ class TestPoomsaeSequenceConflictPrevention:
         _generate_bracket(client, div_bracket)
         match = Match.query.filter_by(division_id=div_bracket).first()
 
+        # Assign ring to the bracket division first, then try to schedule at seq 5
+        client.patch(f"/ui/divisions/{div_bracket}/bracket_ring", data={"ring_id": str(ring_id)})
         resp = client.put(f"/matches/{match.id}/schedule",
-                          data={"ring_id": str(ring_id), "ring_sequence": "5"})
+                          data={"ring_sequence": "5"})
         # Returns 200 with error HTML (HTMX inline error pattern)
         assert resp.status_code == 200
         assert b"Sequence 5" in resp.data
@@ -3103,8 +3194,9 @@ class TestPoomsaeSequenceConflictPrevention:
         _set_poomsae_style(client, div_bracket, "bracket")
         _generate_bracket(client, div_bracket)
         match = Match.query.filter_by(division_id=div_bracket).first()
+        client.patch(f"/ui/divisions/{div_bracket}/bracket_ring", data={"ring_id": str(ring_id)})
         client.put(f"/matches/{match.id}/schedule",
-                   data={"ring_id": str(ring_id), "ring_sequence": "3"})
+                   data={"ring_sequence": "3"})
 
         # Group division — try to use sequence 3
         div_group = _create_division(client, "Group Div", "poomsae").get_json()["id"]
