@@ -894,12 +894,22 @@ def ui_bracket_ring_assignment(div_id):
     division = Division.query.get_or_404(div_id)
     ring_id_raw = request.form.get("ring_id", "")
     if ring_id_raw == "":
-        division.ring_id = None
+        new_ring_id = None
     else:
         try:
-            division.ring_id = int(ring_id_raw)
+            new_ring_id = int(ring_id_raw)
         except ValueError:
             return "Invalid ring_id value.", 400
+        if Ring.query.get(new_ring_id) is None:
+            return "Ring not found.", 404
+
+    # When ring changes, clear scheduling for all matches in this division
+    if new_ring_id != division.ring_id:
+        for match in Match.query.filter_by(division_id=division.id).all():
+            match.ring_id = None
+            match.match_number = None
+
+    division.ring_id = new_ring_id
     db.session.commit()
     rings = Ring.query.all()
     current_ring = Ring.query.get(division.ring_id) if division.ring_id else None
