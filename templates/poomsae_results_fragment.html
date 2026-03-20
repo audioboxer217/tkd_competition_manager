@@ -71,7 +71,7 @@
                         {% if scorekeeper_mode is defined and scorekeeper_mode %}
                         <input type="hidden" name="scorekeeper_mode" value="1">
                         {% endif %}
-                        <input type="number" name="score_value" step="0.001" min="0"
+                        <input type="number" name="score_value" step="0.001" min="0" max="10"
                                value="{{ "%.3f"|format(score.score_value) if has_score else '' }}"
                                placeholder="0.000"
                                required

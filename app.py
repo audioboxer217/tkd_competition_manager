@@ -1280,8 +1280,8 @@ def ui_record_poomsae_score(div_id, comp_id):
     except (ValueError, TypeError):
         return "Invalid score value.", 400
 
-    # Reject NaN, Infinity, and negative scores.
-    if not math.isfinite(score_value) or score_value < 0:
+    # Reject NaN, Infinity, negative scores, and scores above the maximum of 10.000.
+    if not math.isfinite(score_value) or score_value < 0 or score_value > 10.0:
         return "Invalid score value.", 400
 
     score = Score.query.filter_by(competitor_id=comp_id, division_id=div_id).first()
