@@ -1295,6 +1295,52 @@ class TestBracketRingAssignment:
         resp = client.patch(f"/ui/divisions/{div_id}/bracket_ring", data={"ring_id": "notanumber"})
         assert resp.status_code == 400
 
+    def test_bracket_ring_nonexistent_ring(self, client):
+        div_id = _create_division(client).get_json()["id"]
+        resp = client.patch(f"/ui/divisions/{div_id}/bracket_ring", data={"ring_id": "99999"})
+        assert resp.status_code == 404
+
+    def test_bracket_ring_change_clears_scheduled_matches(self, client):
+        ring1_id = _create_ring(client, "Ring 1").get_json()["id"]
+        ring2_id = _create_ring(client, "Ring 2").get_json()["id"]
+        div_id = _create_division(client).get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _generate_bracket(client, div_id)
+        # Assign ring 1 and schedule a match
+        client.patch(f"/ui/divisions/{div_id}/bracket_ring", data={"ring_id": str(ring1_id)})
+        match = Match.query.filter_by(division_id=div_id).first()
+        client.put(f"/matches/{match.id}/schedule", data={"ring_sequence": "1"})
+        # Confirm match is scheduled
+        db.session.refresh(match)
+        assert match.ring_id == ring1_id
+        assert match.match_number is not None
+        # Change to ring 2 — should clear scheduled matches
+        resp = client.patch(f"/ui/divisions/{div_id}/bracket_ring", data={"ring_id": str(ring2_id)})
+        assert resp.status_code == 200
+        db.session.refresh(match)
+        assert match.ring_id is None
+        assert match.match_number is None
+
+    def test_bracket_ring_unassign_clears_scheduled_matches(self, client):
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_id = _create_division(client).get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _generate_bracket(client, div_id)
+        # Assign ring and schedule a match
+        client.patch(f"/ui/divisions/{div_id}/bracket_ring", data={"ring_id": str(ring_id)})
+        match = Match.query.filter_by(division_id=div_id).first()
+        client.put(f"/matches/{match.id}/schedule", data={"ring_sequence": "1"})
+        # Confirm match is scheduled
+        db.session.refresh(match)
+        assert match.ring_id == ring_id
+        assert match.match_number is not None
+        # Unassign ring — should clear scheduled matches
+        resp = client.patch(f"/ui/divisions/{div_id}/bracket_ring", data={"ring_id": ""})
+        assert resp.status_code == 200
+        db.session.refresh(match)
+        assert match.ring_id is None
+        assert match.match_number is None
+
     def test_bracket_manage_page_shows_ring_assignment(self, client):
         ring_id = _create_ring(client, "Ring 2").get_json()["id"]
         div_id = _create_division(client).get_json()["id"]
