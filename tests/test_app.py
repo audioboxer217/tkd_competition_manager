@@ -1441,6 +1441,26 @@ class TestPageRoutes:
         assert b'id="htmx-confirm-modal"' in resp.data
         assert b"htmx:confirm" in resp.data
 
+    def test_bracket_manage_round_order(self, client):
+        """Rounds must appear left-to-right from earliest (most matches) to Final."""
+        div_id = _create_division(client).get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob", "Carol", "Dave"])
+        _generate_bracket(client, div_id)
+
+        resp = client.get(f"/admin/divisions/{div_id}/bracket_manage")
+        assert resp.status_code == 200
+        html = resp.data.decode()
+
+        # Extract the ordered list of round titles from the bracket columns.
+        round_titles = re.findall(r'<div class="round-title">\s*(.*?)\s*</div>', html)
+        assert "Semi-Final" in round_titles, "Semi-Final round title not found in bracket manage page"
+        assert "Final" in round_titles, "Final round title not found in bracket manage page"
+
+        semi_index = round_titles.index("Semi-Final")
+        final_index = round_titles.index("Final")
+        # Semi-Final column title must appear before the Final column title
+        assert semi_index < final_index, "Semi-Final should appear before Final in the bracket manage page"
+
     def test_bracket_manage_not_found(self, client):
         resp = client.get("/admin/divisions/9999/bracket_manage")
         assert resp.status_code == 404
@@ -3226,7 +3246,8 @@ class TestPoomsaeSequenceConflictPrevention:
         assert b"already used" in resp.data
 
         # Match should NOT be scheduled
-        from app import Match as MatchModel, db
+        from app import Match as MatchModel
+        from app import db
         db.session.refresh(match)
         assert match.match_number is None
 
