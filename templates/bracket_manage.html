@@ -110,6 +110,25 @@
         a.back-link:hover {
             color: #0f172a;
         }
+
+        .ring-assignment-section {
+            clear: both;
+            margin-bottom: 20px;
+            padding: 14px 16px;
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        }
+
+        .ring-assignment-section-label {
+            font-size: 0.8rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #64748b;
+            margin-bottom: 10px;
+        }
     </style>
 </head>
 
@@ -118,16 +137,17 @@
     <div class="header">
         <h1 style="margin: 0; color: #0f172a;">Manage Bracket: {{ division.name }}</h1>
     </div>
-    
+
     <span style="float: right;"><a href="/admin/divisions/{{ division.id }}/setup" class="back-link">&larr; Back to
             Setup</a></span>
-    <span style="float: left;">
-        <!-- <button class="save-btn" style="background: #f59e0b;" hx-post="/divisions/{{ division.id }}/generate_bracket"
-            hx-confirm="Are you sure? This will delete all existing matches and regenerate the bracket, including any scheduling and results."
-            hx-swap="none" hx-on::after-request="window.location.reload()">
-            Regenerate Bracket
-        </button> -->
-    </span>
+
+    <div class="ring-assignment-section">
+        <div class="ring-assignment-section-label">Ring Assignment</div>
+        <div id="bracket-ring-assignment">
+            {% include '_bracket_ring_assignment.html' %}
+        </div>
+    </div>
+
     <div class="bracket-container">
         {% for round_name, match_list in rounds.items() %}
         <div class="round-column">
@@ -158,16 +178,8 @@
                     {% if match.status == "Pending" %}
                     <form hx-put="/matches/{{ match.id }}/schedule" hx-target="#match-{{ match.id }}"
                         hx-swap="outerHTML" style="display: flex; gap: 5px;">
-                        <select name="ring_id" required style="flex: 1;">
-                            <option value="">Select Ring...</option>
-                            {% for ring in rings %}
-                            <option value="{{ ring.id }}" {% if ring.id==match.ring_id %}selected{% endif %}>
-                                {{ ring.name }}
-                            </option>
-                            {% endfor %}
-                        </select>
                         <input type="number" name="ring_sequence" placeholder="Seq (e.g. 1)" value="{{ match.match_number
-                            - (match.ring_id * 100) if match.match_number else '' }}" required style="width: 80px;">
+                            - (match.ring_id * 100) if match.match_number else '' }}" required style="width: 100px;">
                         <button type="submit" class="save-btn">Save</button>
                     </form>
                     {% endif %}
