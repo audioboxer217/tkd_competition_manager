@@ -12,3 +12,7 @@ wheels/
 # Environment Items
 .env
 *.env
+
+# Local SQLite databases
+instance/
+*.db

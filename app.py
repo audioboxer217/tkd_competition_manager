@@ -878,7 +878,47 @@ def manage_bracket_page(div_id):
     for match in matches:
         grouped_matches[match.round_name].append(match)
 
-    return render_template("bracket_manage.html", division=division, rounds=grouped_matches, rings=rings)
+    current_ring = Ring.query.get(division.ring_id) if division.ring_id else None
+    return render_template(
+        "bracket_manage.html",
+        division=division,
+        rounds=grouped_matches,
+        rings=rings,
+        current_ring=current_ring,
+    )
+
+
+@app.route("/ui/divisions/<int:div_id>/bracket_ring", methods=["PATCH"])
+@login_required
+def ui_bracket_ring_assignment(div_id):
+    division = Division.query.get_or_404(div_id)
+    ring_id_raw = request.form.get("ring_id", "")
+    if ring_id_raw == "":
+        new_ring_id = None
+    else:
+        try:
+            new_ring_id = int(ring_id_raw)
+        except ValueError:
+            return "Invalid ring_id value.", 400
+        if Ring.query.get(new_ring_id) is None:
+            return "Ring not found.", 404
+
+    # When ring changes, clear scheduling for all matches in this division
+    if new_ring_id != division.ring_id:
+        for match in Match.query.filter_by(division_id=division.id).all():
+            match.ring_id = None
+            match.match_number = None
+
+    division.ring_id = new_ring_id
+    db.session.commit()
+    rings = Ring.query.all()
+    current_ring = Ring.query.get(division.ring_id) if division.ring_id else None
+    return render_template(
+        "_bracket_ring_assignment.html",
+        division=division,
+        rings=rings,
+        current_ring=current_ring,
+    )
 
 
 @app.route("/matches/<int:match_id>/schedule", methods=["PUT"])
@@ -886,18 +926,27 @@ def manage_bracket_page(div_id):
 def schedule_match_htmx(match_id):
     match = Match.query.get_or_404(match_id)
 
-    ring_id = request.form.get("ring_id")
     ring_sequence = request.form.get("ring_sequence")  # e.g., the '25' in 525
 
-    if ring_id and ring_sequence:
+    if ring_sequence:
         try:
-            ring_id_int = int(ring_id)
             ring_sequence_int = int(ring_sequence)
         except ValueError:
-            return "Invalid ring_id or ring_sequence value.", 400
+            return "Invalid ring_sequence value.", 400
         if not (1 <= ring_sequence_int <= 99):
             return "ring_sequence must be between 1 and 99.", 400
-        proposed_match_number = (ring_id_int * 100) + ring_sequence_int
+
+        division_ring_id = match.division.ring_id
+        if division_ring_id is None:
+            return render_template(
+                "_match_schedule_card.html",
+                match=match,
+                ring_sequence_value=ring_sequence_int,
+                scheduled_label=(f"Match {match.match_number}" if match.match_number else "Unassigned"),
+                error_message="Error: No ring assigned to this bracket. Set the ring at the top of the page.",
+            )
+
+        proposed_match_number = (division_ring_id * 100) + ring_sequence_int
         event_type = match.division.event_type
         duplicate = (
             Match.query.join(Division)
@@ -915,13 +964,12 @@ def schedule_match_htmx(match_id):
             conflicting_division = (
                 Division.query.filter(
                     Division.event_type == "poomsae",
-                    Division.ring_id == ring_id_int,
+                    Division.ring_id == division_ring_id,
                     Division.ring_sequence == ring_sequence_int,
                     Division.id != match.division_id,
                 ).first()
             )
         if duplicate or conflicting_division:
-            rings = Ring.query.all()
             # Build a descriptive name for whatever is already using this slot
             if conflicting_division:
                 conflict_name = conflicting_division.name
@@ -931,23 +979,17 @@ def schedule_match_htmx(match_id):
             return render_template(
                 "_match_schedule_card.html",
                 match=match,
-                rings=rings,
-                selected_ring_id=ring_id_int,
                 ring_sequence_value=ring_sequence_int,
                 scheduled_label=(f"Match {match.match_number}" if match.match_number else "Unassigned"),
                 error_message=(f'Error: Sequence {ring_sequence_int} is already used by "{conflict_name}" in this ring.'),
             )
-        match.ring_id = ring_id_int
+        match.ring_id = division_ring_id
         match.match_number = proposed_match_number
         db.session.commit()
 
-    # Fetch rings again to populate the dropdown in the response
-    rings = Ring.query.all()
     return render_template(
         "_match_schedule_card.html",
         match=match,
-        rings=rings,
-        selected_ring_id=match.ring_id,
         ring_sequence_value=(match.match_number - match.ring_id * 100 if match.match_number and match.ring_id else ""),
         scheduled_label=(f"Match {match.match_number}" if match.match_number else "Unassigned"),
         error_message=None,
