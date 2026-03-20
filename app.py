@@ -1028,23 +1028,6 @@ def ui_record_result(match_id):
 
         winner = db.session.get(Competitor, match.winner_id)
 
-        # Get remaining matches for this ring to refresh the matches list
-        remaining_matches = []
-        if match.ring_id is not None:
-            remaining_matches = (
-                Match.query.filter(
-                    Match.ring_id == match.ring_id,
-                    Match.division.has(event_type=match.division.event_type),
-                    Match.status.in_(["Pending", "In Progress"]),
-                )
-                .order_by(Match.match_number)
-                .all()
-            )
-
-        matches_html = render_template(
-            "scorekeeper_matches_fragment.html", matches=remaining_matches
-        )
-
         winner_name = winner.name
         match_number = match.match_number
 
@@ -1055,15 +1038,16 @@ def ui_record_result(match_id):
 
         # Return main swap (removes match card) + OOB swaps for notification and
         # refreshed matches list so other cards reflect any bracket advancement.
-        # For poomsae, also refresh the unified poomsae container since it contains
-        # both bracket matches and group divisions interleaved.
+        # Both kyorugi and poomsae use a load-triggered OOB outerHTML swap so that
+        # the new match/division cards are fetched via a fresh HTMX request and
+        # fully re-initialized by HTMX (fixing the "Start button does nothing" bug
+        # that occurred when content was injected directly via innerHTML swap).
         return render_template(
             "_scorekeeper_result_oob.html",
             match=match,
             match_number=match_number,
             winner_name=winner_name,
             result_message=result_message,
-            matches_html=matches_html,
             is_poomsae=(match.division.event_type == "poomsae"),
         )
 
@@ -1322,6 +1306,27 @@ def ui_ring_poomsae_divisions(ring_id):
     items.sort(key=lambda item: (item[0] is None, item[0] or 0))
 
     return "\n".join(html for _, html in items)
+
+
+@app.route("/ui/rings/<int:ring_id>/kyorugi_matches")
+@login_required
+def ui_ring_kyorugi_matches(ring_id):
+    """HTMX fragment: remaining kyorugi (sparring) matches for a ring (Pending or In Progress),
+    ordered by match number. Used by the scorekeeper page to reload the match queue after a
+    match result is recorded."""
+    Ring.query.get_or_404(ring_id)
+
+    matches = (
+        Match.query.filter(
+            Match.ring_id == ring_id,
+            Match.division.has(event_type="kyorugi"),
+            Match.status.in_(["Pending", "In Progress"]),
+        )
+        .order_by(Match.match_number)
+        .all()
+    )
+
+    return render_template("scorekeeper_matches_fragment.html", matches=matches)
 
 
 # Initialize DB for testing

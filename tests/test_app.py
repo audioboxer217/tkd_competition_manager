@@ -961,7 +961,8 @@ class TestUIMatchResult:
         assert resp.status_code == 200
 
     def test_ui_record_result_completed_includes_oob_notification(self, client):
-        """Response should include OOB result notification and refreshed matches list."""
+        """Response should include OOB result notification and a load-triggered OOB swap for
+        the matches container so HTMX fully re-initialises the new match cards."""
         div_id = _create_division(client).get_json()["id"]
         _add_competitors(client, div_id, ["Alice", "Bob"])
         _generate_bracket(client, div_id)
@@ -975,12 +976,16 @@ class TestUIMatchResult:
         )
         assert resp.status_code == 200
         assert b'id="result-notification"' in resp.data
-        assert b'hx-swap-oob="innerHTML"' in resp.data
-        assert b'id="matches-container"' in resp.data
         assert b'result-notification-content' in resp.data
+        # matches-container is refreshed via a load-triggered OOB outerHTML swap so that
+        # HTMX fully processes the new match cards (fixes Start button not working).
+        assert b'id="matches-container"' in resp.data
+        assert b'hx-swap-oob="outerHTML"' in resp.data
+        assert b'hx-trigger="load"' in resp.data
 
     def test_ui_record_result_disqualification_includes_oob_notification(self, client):
-        """Disqualification result should include OOB notification and refreshed matches."""
+        """Disqualification result should include OOB notification and load-triggered
+        matches refresh."""
         div_id = _create_division(client).get_json()["id"]
         _add_competitors(client, div_id, ["Alice", "Bob"])
         _generate_bracket(client, div_id)
@@ -994,17 +999,18 @@ class TestUIMatchResult:
         )
         assert resp.status_code == 200
         assert b'id="result-notification"' in resp.data
-        assert b'hx-swap-oob="innerHTML"' in resp.data
         assert b'id="matches-container"' in resp.data
+        assert b'hx-swap-oob="outerHTML"' in resp.data
+        assert b'hx-trigger="load"' in resp.data
 
     def test_ui_record_result_completed_refreshes_bracket_advancement(self, client):
-        """After a match completes, next match should show winner name in the OOB matches list."""
+        """After a match completes, winner name appears in the result notification."""
         ring_id = _create_ring(client, "Ring 1").get_json()["id"]
         div_id = _create_division(client).get_json()["id"]
         _add_competitors(client, div_id, ["Alice", "Bob", "Carol", "Dave"])
         _generate_bracket(client, div_id)
 
-        # Schedule all matches to the ring so they appear in the matches refresh
+        # Schedule all matches to the ring
         all_matches = Match.query.filter_by(division_id=div_id).order_by(Match.match_number).all()
         for seq, m in enumerate(all_matches, start=1):
             client.put(
@@ -1020,7 +1026,7 @@ class TestUIMatchResult:
             data={"status": "Completed", "winner_id": str(winner.id)},
         )
         assert resp.status_code == 200
-        # The refreshed matches-container should include the winner's name in the next match
+        # Winner's name appears in the result notification
         assert winner.name.encode() in resp.data
         # Non-final match: "advances to the next round!" message
         assert b"advances to the next round!" in resp.data
@@ -2583,6 +2589,122 @@ class TestPoomsaeScorekeeperDivisions:
     def test_poomsae_divisions_fragment_not_found_ring(self, client):
         resp = client.get("/ui/rings/9999/poomsae_divisions")
         assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Kyorugi matches fragment (/ui/rings/<ring_id>/kyorugi_matches)
+# ---------------------------------------------------------------------------
+
+
+class TestKyorugiMatchesFragment:
+    """Tests for the /ui/rings/<ring_id>/kyorugi_matches HTMX fragment route used
+    to reload the match queue after a sparring result is recorded."""
+
+    def test_kyorugi_matches_fragment_empty(self, client):
+        """Fragment returns empty-state markup when no matches are assigned."""
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+
+        resp = client.get(f"/ui/rings/{ring_id}/kyorugi_matches")
+        assert resp.status_code == 200
+        assert b"No ready matches" in resp.data
+
+    def test_kyorugi_matches_fragment_shows_pending(self, client):
+        """Fragment returns pending match cards for the ring."""
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_id = _create_division(client).get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _generate_bracket(client, div_id)
+
+        match = Match.query.filter_by(division_id=div_id, round_name="Final").first()
+        client.put(
+            f"/matches/{match.id}/schedule",
+            data={"ring_id": str(ring_id), "ring_sequence": "1"},
+        )
+
+        resp = client.get(f"/ui/rings/{ring_id}/kyorugi_matches")
+        assert resp.status_code == 200
+        assert b"Alice" in resp.data
+        assert b"Bob" in resp.data
+
+    def test_kyorugi_matches_fragment_excludes_completed(self, client):
+        """Fragment does not return completed matches."""
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_id = _create_division(client).get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _generate_bracket(client, div_id)
+
+        match = Match.query.filter_by(division_id=div_id, round_name="Final").first()
+        client.put(
+            f"/matches/{match.id}/schedule",
+            data={"ring_id": str(ring_id), "ring_sequence": "1"},
+        )
+        # Complete the match
+        client.post(
+            f"/ui/matches/{match.id}/result",
+            data={"status": "Completed", "winner_id": str(match.competitor1_id)},
+        )
+
+        resp = client.get(f"/ui/rings/{ring_id}/kyorugi_matches")
+        assert resp.status_code == 200
+        # Completed match is gone; empty-state shown
+        assert b"No ready matches" in resp.data
+
+    def test_kyorugi_matches_fragment_excludes_poomsae(self, client):
+        """Fragment only returns kyorugi matches, not poomsae."""
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _set_poomsae_style(client, div_id, "bracket")
+        _generate_bracket(client, div_id)
+
+        match = Match.query.filter_by(division_id=div_id).first()
+        client.put(
+            f"/matches/{match.id}/schedule",
+            data={"ring_id": str(ring_id), "ring_sequence": "1"},
+        )
+
+        resp = client.get(f"/ui/rings/{ring_id}/kyorugi_matches")
+        assert resp.status_code == 200
+        # Poomsae match not included
+        assert b"Alice" not in resp.data
+        assert b"No ready matches" in resp.data
+
+    def test_kyorugi_matches_fragment_not_found_ring(self, client):
+        resp = client.get("/ui/rings/9999/kyorugi_matches")
+        assert resp.status_code == 404
+
+    def test_kyorugi_matches_fragment_requires_login(self, client):
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        with client.session_transaction() as sess:
+            sess.clear()
+        resp = client.get(f"/ui/rings/{ring_id}/kyorugi_matches")
+        assert resp.status_code in (302, 401)
+
+    def test_record_result_oob_uses_load_trigger_for_kyorugi(self, client):
+        """Completing a kyorugi match triggers a load-based OOB refresh of
+        matches-container so HTMX fully re-initialises new match card buttons."""
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_id = _create_division(client).get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _generate_bracket(client, div_id)
+
+        match = Match.query.filter_by(division_id=div_id, round_name="Final").first()
+        client.put(
+            f"/matches/{match.id}/schedule",
+            data={"ring_id": str(ring_id), "ring_sequence": "1"},
+        )
+
+        resp = client.post(
+            f"/ui/matches/{match.id}/result",
+            data={"status": "Completed", "winner_id": str(match.competitor1_id)},
+        )
+        assert resp.status_code == 200
+        # OOB element uses outerHTML swap + load trigger (not inline innerHTML)
+        assert b'id="matches-container"' in resp.data
+        assert b'hx-swap-oob="outerHTML"' in resp.data
+        assert b'hx-trigger="load"' in resp.data
+        kyorugi_url = f'/ui/rings/{ring_id}/kyorugi_matches'.encode()
+        assert kyorugi_url in resp.data
 
 
 # ---------------------------------------------------------------------------
