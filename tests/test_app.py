@@ -961,7 +961,7 @@ class TestUIMatchResult:
         assert resp.status_code == 200
 
     def test_ui_record_result_completed_includes_oob_notification(self, client):
-        """Response should include OOB result notification and refreshed matches list."""
+        """Response should include OOB result notification and a lazy-load matches container."""
         div_id = _create_division(client).get_json()["id"]
         _add_competitors(client, div_id, ["Alice", "Bob"])
         _generate_bracket(client, div_id)
@@ -975,12 +975,14 @@ class TestUIMatchResult:
         )
         assert resp.status_code == 200
         assert b'id="result-notification"' in resp.data
-        assert b'hx-swap-oob="innerHTML"' in resp.data
-        assert b'id="matches-container"' in resp.data
         assert b'result-notification-content' in resp.data
+        # Kyorugi: matches container should be refreshed via a lazy HTMX load (not inline HTML)
+        assert b'id="matches-container"' in resp.data
+        assert b'hx-trigger="load"' in resp.data
+        assert b'scorekeeper_matches' in resp.data
 
     def test_ui_record_result_disqualification_includes_oob_notification(self, client):
-        """Disqualification result should include OOB notification and refreshed matches."""
+        """Disqualification result should include OOB notification and lazy-load matches container."""
         div_id = _create_division(client).get_json()["id"]
         _add_competitors(client, div_id, ["Alice", "Bob"])
         _generate_bracket(client, div_id)
@@ -994,11 +996,11 @@ class TestUIMatchResult:
         )
         assert resp.status_code == 200
         assert b'id="result-notification"' in resp.data
-        assert b'hx-swap-oob="innerHTML"' in resp.data
         assert b'id="matches-container"' in resp.data
+        assert b'hx-trigger="load"' in resp.data
 
     def test_ui_record_result_completed_refreshes_bracket_advancement(self, client):
-        """After a match completes, next match should show winner name in the OOB matches list."""
+        """After a match completes, the scorekeeper_matches endpoint should show the advanced winner."""
         ring_id = _create_ring(client, "Ring 1").get_json()["id"]
         div_id = _create_division(client).get_json()["id"]
         _add_competitors(client, div_id, ["Alice", "Bob", "Carol", "Dave"])
@@ -1021,10 +1023,16 @@ class TestUIMatchResult:
             data={"status": "Completed", "winner_id": str(winner.id)},
         )
         assert resp.status_code == 200
-        # The refreshed matches-container should include the winner's name in the next match
+        # Notification should contain the winner's name and result message
         assert winner.name.encode() in resp.data
-        # Non-final match: "advances to the next round!" message
         assert b"advances to the next round!" in resp.data
+        # The response should trigger a lazy reload of the matches container
+        assert b'scorekeeper_matches' in resp.data
+
+        # The fresh matches endpoint should show the winner in the next (Final) match
+        matches_resp = client.get(f"/ui/rings/{ring_id}/scorekeeper_matches")
+        assert matches_resp.status_code == 200
+        assert winner.name.encode() in matches_resp.data
 
     def test_ui_record_result_final_match_shows_gold_message(self, client):
         """Completing the Final match should show 'wins gold!' instead of 'advances'."""
@@ -1164,6 +1172,78 @@ class TestUIMatchResult:
         assert resp.headers.get("HX-Trigger") != "showInProgressError"
         db.session.refresh(second_match)
         assert second_match.status == "In Progress"
+
+
+# ---------------------------------------------------------------------------
+# Scorekeeper matches fragment endpoint
+# ---------------------------------------------------------------------------
+
+
+class TestScorekeeperMatchesFragment:
+    def test_scorekeeper_matches_returns_pending_matches(self, client):
+        """Fragment endpoint returns pending kyorugi matches for the ring."""
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_id = _create_division(client).get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _generate_bracket(client, div_id)
+
+        client.patch(f"/ui/divisions/{div_id}/bracket_ring", data={"ring_id": str(ring_id)})
+        match = Match.query.filter_by(division_id=div_id, status="Pending").first()
+        client.put(f"/matches/{match.id}/schedule", data={"ring_sequence": "1"})
+
+        resp = client.get(f"/ui/rings/{ring_id}/scorekeeper_matches")
+        assert resp.status_code == 200
+        assert b"Start" in resp.data
+
+    def test_scorekeeper_matches_excludes_completed(self, client):
+        """Completed matches are not returned by the fragment endpoint."""
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_id = _create_division(client).get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _generate_bracket(client, div_id)
+
+        client.patch(f"/ui/divisions/{div_id}/bracket_ring", data={"ring_id": str(ring_id)})
+        match = Match.query.filter_by(division_id=div_id, round_name="Final").first()
+        client.put(f"/matches/{match.id}/schedule", data={"ring_sequence": "1"})
+
+        # Complete the match
+        client.post(
+            f"/ui/matches/{match.id}/result",
+            data={"status": "Completed", "winner_id": str(match.competitor1_id)},
+        )
+
+        resp = client.get(f"/ui/rings/{ring_id}/scorekeeper_matches")
+        assert resp.status_code == 200
+        assert b"No ready matches" in resp.data
+
+    def test_scorekeeper_matches_ring_not_found(self, client):
+        """Returns 404 for an unknown ring."""
+        resp = client.get("/ui/rings/9999/scorekeeper_matches")
+        assert resp.status_code == 404
+
+    def test_scorekeeper_matches_shows_bracket_advancement(self, client):
+        """After a semi-final completes, the winner appears in the next match card."""
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_id = _create_division(client).get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob", "Carol", "Dave"])
+        _generate_bracket(client, div_id)
+
+        client.patch(f"/ui/divisions/{div_id}/bracket_ring", data={"ring_id": str(ring_id)})
+        all_matches = Match.query.filter_by(division_id=div_id).order_by(Match.match_number).all()
+        for seq, m in enumerate(all_matches, start=1):
+            client.put(f"/matches/{m.id}/schedule", data={"ring_sequence": str(seq)})
+
+        first_match = Match.query.filter_by(division_id=div_id, round_name="Semi-Final").first()
+        winner = db.session.get(Competitor, first_match.competitor1_id)
+
+        client.post(
+            f"/ui/matches/{first_match.id}/result",
+            data={"status": "Completed", "winner_id": str(winner.id)},
+        )
+
+        resp = client.get(f"/ui/rings/{ring_id}/scorekeeper_matches")
+        assert resp.status_code == 200
+        assert winner.name.encode() in resp.data
 
 
 # ---------------------------------------------------------------------------
