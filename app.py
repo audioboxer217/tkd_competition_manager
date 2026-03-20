@@ -491,9 +491,13 @@ def get_bracket_ui(div_id):
 
 
 def _round_sort_key(round_name):
-    """Return a numeric sort key so rounds are ordered earliest-first (most matches → fewest).
+    """Return a numeric sort key so rounds are ordered earliest-first.
 
-    Higher key = more matches in that round = earlier in the bracket.
+    The key reflects the effective bracket size / competitor count for the round:
+    'Final' -> 1, 'Semi-Final' -> 2, 'Quarter-Final' -> 4, and 'Round of N' -> N
+    (e.g. 'Round of 16' -> 16).  Higher keys correspond to earlier rounds with
+    more competitors; the exact numeric value is used only for ordering, and is
+    not intended to equal the number of matches.
     """
     if round_name == "Final":
         return 1
