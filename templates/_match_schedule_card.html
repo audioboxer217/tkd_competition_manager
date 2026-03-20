@@ -22,14 +22,7 @@
         {% endif %}
         <form hx-put="/matches/{{ match.id }}/schedule" hx-target="#match-{{ match.id }}" hx-swap="outerHTML"
             style="display: flex; gap: 5px;">
-            <select name="ring_id" required style="flex: 1;">
-                <option value="">Select Ring...</option>
-                {% for ring in rings %}
-                <option value="{{ ring.id }}" {% if selected_ring_id==ring.id %}selected{% endif %}>{{ ring.name }}
-                </option>
-                {% endfor %}
-            </select>
-            <input type="number" name="ring_sequence" value="{{ ring_sequence_value }}" required style="width: 80px;">
+            <input type="number" name="ring_sequence" value="{{ ring_sequence_value }}" placeholder="Seq (e.g. 1)" required style="width: 100px;">
             <button type="submit" class="save-btn">Save</button>
         </form>
     </div>

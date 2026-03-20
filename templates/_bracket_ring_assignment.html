@@ -1,0 +1,20 @@
+<form hx-patch="/ui/divisions/{{ division.id }}/bracket_ring"
+      hx-target="#bracket-ring-assignment"
+      hx-swap="innerHTML"
+      style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+    <label style="font-size: 0.9rem; color: #475569; white-space: nowrap; font-weight: 600;">Ring:</label>
+    <select name="ring_id" style="padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 0.9rem; min-width: 140px;">
+        <option value="">Unassigned</option>
+        {% for ring in rings %}
+        <option value="{{ ring.id }}" {% if division.ring_id == ring.id %}selected{% endif %}>{{ ring.name }}</option>
+        {% endfor %}
+    </select>
+    <button type="submit" style="background: #2563eb; color: white; border: none; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 0.85rem; font-weight: 600;">
+        Save
+    </button>
+    {% if current_ring %}
+    <span style="font-size: 0.9rem; color: #059669; font-weight: 600;">✓ {{ current_ring.name }}</span>
+    {% else %}
+    <span style="font-size: 0.9rem; color: #94a3b8;">No ring assigned — matches cannot be scheduled until a ring is set.</span>
+    {% endif %}
+</form>
