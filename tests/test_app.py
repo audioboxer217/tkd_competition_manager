@@ -1323,6 +1323,25 @@ class TestPageRoutes:
         assert b'id="htmx-confirm-modal"' in resp.data
         assert b"htmx:confirm" in resp.data
 
+    def test_bracket_manage_round_order(self, client):
+        """Rounds must appear left-to-right from earliest (most matches) to Final."""
+        div_id = _create_division(client).get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob", "Carol", "Dave"])
+        _generate_bracket(client, div_id)
+
+        resp = client.get(f"/admin/divisions/{div_id}/bracket_manage")
+        assert resp.status_code == 200
+        html = resp.data.decode()
+
+        semi_pos = html.find("Semi-Final")
+        final_pos = html.find("Final")
+        # Semi-Final column title must appear before the Final column title
+        assert semi_pos != -1, "Semi-Final not found in bracket manage page"
+        assert final_pos != -1, "Final not found in bracket manage page"
+        assert semi_pos < final_pos, (
+            "Semi-Final should appear before Final in the bracket manage page"
+        )
+
     def test_bracket_manage_not_found(self, client):
         resp = client.get("/admin/divisions/9999/bracket_manage")
         assert resp.status_code == 404

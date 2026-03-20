@@ -490,6 +490,25 @@ def get_bracket_ui(div_id):
     return render_template("bracket_fragment.html", columns=columns, placements=placements)
 
 
+def _round_sort_key(round_name):
+    """Return a numeric sort key so rounds are ordered earliest-first (most matches → fewest).
+
+    Higher key = more matches in that round = earlier in the bracket.
+    """
+    if round_name == "Final":
+        return 1
+    if round_name == "Semi-Final":
+        return 2
+    if round_name == "Quarter-Final":
+        return 4
+    if round_name and round_name.startswith("Round of "):
+        try:
+            return int(round_name[9:])
+        except ValueError:
+            pass
+    return 0
+
+
 def _abbrev_round(round_name):
     """Return a short display label for a round name.
 
@@ -873,12 +892,16 @@ def manage_bracket_page(div_id):
     matches = Match.query.filter_by(division_id=div_id).all()
     rings = Ring.query.all()
 
-    # Group matches by round
+    # Group matches by round, then sort rounds earliest-first (most matches → fewest)
     grouped_matches = defaultdict(list)
     for match in matches:
         grouped_matches[match.round_name].append(match)
 
-    return render_template("bracket_manage.html", division=division, rounds=grouped_matches, rings=rings)
+    sorted_rounds = dict(
+        sorted(grouped_matches.items(), key=lambda x: _round_sort_key(x[0]), reverse=True)
+    )
+
+    return render_template("bracket_manage.html", division=division, rounds=sorted_rounds, rings=rings)
 
 
 @app.route("/matches/<int:match_id>/schedule", methods=["PUT"])
