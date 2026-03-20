@@ -8,5 +8,6 @@
 <div id="poomsae-divisions-container" hx-get="/ui/rings/{{ match.ring_id }}/poomsae_divisions" hx-trigger="load"
     hx-swap="innerHTML" hx-swap-oob="outerHTML"></div>
 {% else %}
-<div id="matches-container" hx-swap-oob="innerHTML">{{ matches_html | safe }}</div>
+<div id="matches-container" hx-get="/ui/rings/{{ match.ring_id }}/scorekeeper_matches" hx-trigger="load"
+    hx-swap="innerHTML" hx-swap-oob="outerHTML"></div>
 {% endif %}

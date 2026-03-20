@@ -1019,6 +1019,23 @@ def ring_scorekeeper(ring_id):
     return render_template("scorekeeper.html", ring=ring, matches=matches, event_type=event_type)
 
 
+@app.route("/ui/rings/<int:ring_id>/scorekeeper_matches")
+@login_required
+def ui_scorekeeper_matches(ring_id):
+    """HTMX fragment: pending/in-progress kyorugi matches for a ring, ordered by match number."""
+    Ring.query.get_or_404(ring_id)
+    matches = (
+        Match.query.filter(
+            Match.ring_id == ring_id,
+            Match.division.has(event_type="kyorugi"),
+            Match.status.in_(["Pending", "In Progress"]),
+        )
+        .order_by(Match.match_number)
+        .all()
+    )
+    return render_template("scorekeeper_matches_fragment.html", matches=matches)
+
+
 @app.route("/ui/matches/<int:match_id>/result", methods=["POST"])
 @login_required
 def ui_record_result(match_id):
@@ -1070,23 +1087,6 @@ def ui_record_result(match_id):
 
         winner = db.session.get(Competitor, match.winner_id)
 
-        # Get remaining matches for this ring to refresh the matches list
-        remaining_matches = []
-        if match.ring_id is not None:
-            remaining_matches = (
-                Match.query.filter(
-                    Match.ring_id == match.ring_id,
-                    Match.division.has(event_type=match.division.event_type),
-                    Match.status.in_(["Pending", "In Progress"]),
-                )
-                .order_by(Match.match_number)
-                .all()
-            )
-
-        matches_html = render_template(
-            "scorekeeper_matches_fragment.html", matches=remaining_matches
-        )
-
         winner_name = winner.name
         match_number = match.match_number
 
@@ -1095,17 +1095,16 @@ def ui_record_result(match_id):
         else:
             result_message = "advances to the next round!"
 
-        # Return main swap (removes match card) + OOB swaps for notification and
-        # refreshed matches list so other cards reflect any bracket advancement.
-        # For poomsae, also refresh the unified poomsae container since it contains
-        # both bracket matches and group divisions interleaved.
+        # Return OOB swaps: result notification + refreshed match/division container.
+        # Each OOB element uses hx-trigger="load" to trigger a fresh HTMX fetch so that
+        # newly rendered buttons are fully processed by HTMX (same pattern for both
+        # kyorugi and poomsae).
         return render_template(
             "_scorekeeper_result_oob.html",
             match=match,
             match_number=match_number,
             winner_name=winner_name,
             result_message=result_message,
-            matches_html=matches_html,
             is_poomsae=(match.division.event_type == "poomsae"),
         )
 
