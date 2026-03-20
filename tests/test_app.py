@@ -1333,12 +1333,15 @@ class TestPageRoutes:
         assert resp.status_code == 200
         html = resp.data.decode()
 
-        semi_pos = html.find("Semi-Final")
-        final_pos = html.find("Final")
+        # Extract the ordered list of round titles from the bracket columns.
+        round_titles = re.findall(r'<div class="round-title">\s*(.*?)\s*</div>', html)
+        assert "Semi-Final" in round_titles, "Semi-Final round title not found in bracket manage page"
+        assert "Final" in round_titles, "Final round title not found in bracket manage page"
+
+        semi_index = round_titles.index("Semi-Final")
+        final_index = round_titles.index("Final")
         # Semi-Final column title must appear before the Final column title
-        assert semi_pos != -1, "Semi-Final not found in bracket manage page"
-        assert final_pos != -1, "Final not found in bracket manage page"
-        assert semi_pos < final_pos, (
+        assert semi_index < final_index, (
             "Semi-Final should appear before Final in the bracket manage page"
         )
 
