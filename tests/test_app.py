@@ -2263,6 +2263,35 @@ class TestPoomsaeScoreRecording:
         )
         assert resp.status_code == 400
 
+    def test_record_score_above_max(self, client):
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice"])
+
+        from app import Competitor
+        comp = Competitor.query.filter_by(division_id=div_id).first()
+
+        resp = client.post(
+            f"/ui/divisions/{div_id}/competitors/{comp.id}/score",
+            data={"score_value": "10.001"},
+        )
+        assert resp.status_code == 400
+
+    def test_record_score_at_max(self, client):
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice"])
+
+        from app import Competitor, Score
+        comp = Competitor.query.filter_by(division_id=div_id).first()
+
+        resp = client.post(
+            f"/ui/divisions/{div_id}/competitors/{comp.id}/score",
+            data={"score_value": "10.000"},
+        )
+        assert resp.status_code == 200
+        scores = Score.query.filter_by(competitor_id=comp.id, division_id=div_id).all()
+        assert len(scores) == 1
+        assert abs(scores[0].score_value - 10.0) < 0.0001
+
     def test_record_score_wrong_division(self, client):
         div_id1 = _create_division(client, "Poomsae Div 1", "poomsae").get_json()["id"]
         div_id2 = _create_division(client, "Poomsae Div 2", "poomsae").get_json()["id"]
