@@ -65,7 +65,7 @@
 
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
         <a href="/admin" class="btn-back">&larr; Back to Admin</a>
-        <a href="/admin/divisions/{{ division.id }}/poomsae_results" class="btn-back">🏅 View Results</a>
+        <a href="/admin/divisions/{{ division.id }}/group_results" class="btn-back">🏅 View Results</a>
     </div>
 
     <div class="container">
@@ -78,7 +78,7 @@
         </div>
 
         <div id="poomsae-scores-manage"
-             hx-get="/ui/divisions/{{ division.id }}/poomsae_results_fragment"
+             hx-get="/ui/divisions/{{ division.id }}/group_results_fragment"
              hx-trigger="load"
              hx-swap="outerHTML">
             <p style="text-align: center; color: #64748b;">Loading scores&hellip;</p>
