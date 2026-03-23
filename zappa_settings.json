@@ -16,5 +16,23 @@
         "runtime": "python3.13",
         "s3_bucket": "zappa-tkd-competition-manager-dev",
         "remote_env": "s3://zappa-tkd-competition-manager-dev/secrets.json"
+    },
+    "prod": {
+        "domain": "tournament.okgp.oktkdevents.com",
+        "certificate_arn": "arn:aws:acm:us-east-1:058264481846:certificate/fa4d25c6-0150-4250-8132-757f1d18bc9c",
+        "app_function": "app.app",
+        "aws_region": "us-east-1",
+        "exclude": [
+            "boto3",
+            "dateutil",
+            "botocore",
+            "s3transfer",
+            "concurrent"
+        ],
+        "profile_name": "gdtkd",
+        "project_name": "tkd-competition",
+        "runtime": "python3.13",
+        "s3_bucket": "zappa-tkd-competition-manager-prod",
+        "remote_env": "s3://zappa-tkd-competition-manager-prod/secrets.json"
     }
 }
