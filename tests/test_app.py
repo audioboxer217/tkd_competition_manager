@@ -2644,25 +2644,25 @@ class TestPoomsaeResultsPage:
     def test_poomsae_results_page(self, client):
         div_id = _create_division(client, "World Class Poomsae", "poomsae").get_json()["id"]
 
-        resp = client.get(f"/admin/divisions/{div_id}/poomsae_results")
+        resp = client.get(f"/admin/divisions/{div_id}/group_results")
         assert resp.status_code == 200
         assert b"World Class Poomsae" in resp.data
 
     def test_poomsae_results_page_not_found(self, client):
-        resp = client.get("/admin/divisions/9999/poomsae_results")
+        resp = client.get("/admin/divisions/9999/group_results")
         assert resp.status_code == 404
 
     def test_poomsae_results_fragment_empty(self, client):
         div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
 
-        resp = client.get(f"/ui/divisions/{div_id}/poomsae_results_fragment")
+        resp = client.get(f"/ui/divisions/{div_id}/group_results_fragment")
         assert resp.status_code == 200
 
     def test_poomsae_results_fragment_shows_competitors(self, client):
         div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
         _add_competitors(client, div_id, ["Alice", "Bob"])
 
-        resp = client.get(f"/ui/divisions/{div_id}/poomsae_results_fragment")
+        resp = client.get(f"/ui/divisions/{div_id}/group_results_fragment")
         assert resp.status_code == 200
         assert b"Alice" in resp.data
         assert b"Bob" in resp.data
@@ -2678,7 +2678,7 @@ class TestPoomsaeResultsPage:
         client.post(f"/ui/divisions/{div_id}/competitors/{comps['Bob'].id}/score", data={"score_value": "9.5"})
         client.post(f"/ui/divisions/{div_id}/competitors/{comps['Carol'].id}/score", data={"score_value": "8.5"})
 
-        resp = client.get(f"/ui/divisions/{div_id}/poomsae_results_fragment")
+        resp = client.get(f"/ui/divisions/{div_id}/group_results_fragment")
         html = resp.data.decode()
 
         bob_pos = html.find("Bob")
@@ -2697,7 +2697,7 @@ class TestPoomsaeResultsPage:
         client.post(f"/ui/divisions/{div_id}/competitors/{comps['Bob'].id}/score", data={"score_value": "8.0"})
         client.post(f"/ui/divisions/{div_id}/competitors/{comps['Carol'].id}/score", data={"score_value": "7.0"})
 
-        resp = client.get(f"/ui/divisions/{div_id}/poomsae_results_fragment")
+        resp = client.get(f"/ui/divisions/{div_id}/group_results_fragment")
         assert b"\xf0\x9f\xa5\x87" in resp.data  # 🥇
         assert b"\xf0\x9f\xa5\x88" in resp.data  # 🥈
         assert b"\xf0\x9f\xa5\x89" in resp.data  # 🥉
@@ -2708,7 +2708,7 @@ class TestPoomsaeResultsPage:
 
         resp = client.get("/ui/results_divisions?event_type=poomsae")
         assert resp.status_code == 200
-        assert f"/admin/divisions/{div_id}/poomsae_results".encode() in resp.data
+        assert f"/admin/divisions/{div_id}/group_results".encode() in resp.data
 
     def test_results_divisions_poomsae_with_bracket_links_to_bracket(self, client):
         """Poomsae division with bracket style links to the bracket view, not poomsae results."""
@@ -2720,7 +2720,7 @@ class TestPoomsaeResultsPage:
         resp = client.get("/ui/results_divisions?event_type=poomsae")
         assert resp.status_code == 200
         assert f"/ui/divisions/{div_id}/bracket".encode() in resp.data
-        assert f"/admin/divisions/{div_id}/poomsae_results".encode() not in resp.data
+        assert f"/admin/divisions/{div_id}/group_results".encode() not in resp.data
 
     def test_results_divisions_kyorugi_still_links_to_bracket(self, client):
         div_id = _create_division(client, "Kyorugi Div", "kyorugi").get_json()["id"]
@@ -2797,7 +2797,7 @@ class TestPoomsaePublicRings:
 
         resp = client.get("/ui/public_rings?event_type=poomsae")
         assert resp.status_code == 200
-        assert f"/admin/divisions/{div_id}/poomsae_results".encode() in resp.data
+        assert f"/admin/divisions/{div_id}/group_results".encode() in resp.data
 
 
 class TestPoomsaeScorekeeperDivisions:
@@ -3000,7 +3000,7 @@ class TestPoomsaeScoreManagePage:
 
         resp = client.get(f"/admin/divisions/{div_id}/score_manage")
         assert resp.status_code == 200
-        assert f"/admin/divisions/{div_id}/poomsae_results".encode() in resp.data
+        assert f"/admin/divisions/{div_id}/group_results".encode() in resp.data
 
 
 # ---------------------------------------------------------------------------
@@ -3076,7 +3076,7 @@ class TestPoomsaePlacementsFragment:
         """The read-only poomsae_results page references the placements fragment URL."""
         div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
 
-        resp = client.get(f"/admin/divisions/{div_id}/poomsae_results")
+        resp = client.get(f"/admin/divisions/{div_id}/group_results")
         assert resp.status_code == 200
         assert b"poomsae_placements_fragment" in resp.data
 
@@ -3084,10 +3084,10 @@ class TestPoomsaePlacementsFragment:
         """The public results page does not directly include score entry forms."""
         div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
 
-        resp = client.get(f"/admin/divisions/{div_id}/poomsae_results")
+        resp = client.get(f"/admin/divisions/{div_id}/group_results")
         assert resp.status_code == 200
         # The page itself should not have score submission endpoints directly
-        assert b"poomsae_results_fragment" not in resp.data
+        assert b"group_results_fragment" not in resp.data
 
 
 # ---------------------------------------------------------------------------

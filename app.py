@@ -1149,12 +1149,12 @@ def _build_poomsae_ranked(div_id):
     return [(c, scores_by_comp.get(c.id)) for c in scored + unscored]
 
 
-def _poomsae_results_fragment_html(div_id, scorekeeper_mode=False):
-    """Return the ranked scores table with score-entry forms for a poomsae division."""
+def _group_results_fragment_html(div_id, scorekeeper_mode=False):
+    """Return the ranked scores table with score-entry forms for a poomsae/breaking division."""
     division = Division.query.get_or_404(div_id)
     ranked = _build_poomsae_ranked(div_id)
     return render_template(
-        "poomsae_results_fragment.html",
+        "group_results_fragment.html",
         division=division,
         ranked=ranked,
         scorekeeper_mode=scorekeeper_mode,
@@ -1255,7 +1255,7 @@ def ui_update_event_status(div_id):
     db.session.commit()
     ranked = _build_poomsae_ranked(div_id)
     return render_template(
-        "poomsae_results_fragment.html",
+        "group_results_fragment.html",
         division=division,
         ranked=ranked,
         scorekeeper_mode=True,
@@ -1293,15 +1293,15 @@ def ui_record_poomsae_score(div_id, comp_id):
     db.session.commit()
 
     scorekeeper_mode = request.form.get("scorekeeper_mode") == "1"
-    return _poomsae_results_fragment_html(div_id, scorekeeper_mode=scorekeeper_mode)
+    return _group_results_fragment_html(div_id, scorekeeper_mode=scorekeeper_mode)
 
 
-@app.route("/ui/divisions/<int:div_id>/poomsae_results_fragment")
+@app.route("/ui/divisions/<int:div_id>/group_results_fragment")
 @login_required
-def ui_poomsae_results_fragment(div_id):
-    """HTMX fragment: ranked poomsae results with score-entry forms (for score_manage and scorekeeper)."""
+def ui_group_results_fragment(div_id):
+    """HTMX fragment: ranked group results with score-entry forms (for score_manage and scorekeeper)."""
     scorekeeper_mode = request.args.get("scorekeeper_mode") == "1"
-    return _poomsae_results_fragment_html(div_id, scorekeeper_mode=scorekeeper_mode)
+    return _group_results_fragment_html(div_id, scorekeeper_mode=scorekeeper_mode)
 
 
 @app.route("/ui/divisions/<int:div_id>/poomsae_placements_fragment")
@@ -1312,11 +1312,11 @@ def ui_poomsae_placements_fragment(div_id):
     return render_template("poomsae_placements_fragment.html", division=division, ranked=ranked)
 
 
-@app.route("/admin/divisions/<int:div_id>/poomsae_results")
-def poomsae_results_page(div_id):
-    """Read-only poomsae results page showing medal placements (public/display view)."""
+@app.route("/admin/divisions/<int:div_id>/group_results")
+def group_results_page(div_id):
+    """Read-only group results page showing medal placements (public/display view)."""
     division = Division.query.get_or_404(div_id)
-    return render_template("poomsae_results.html", division=division)
+    return render_template("group_results.html", division=division)
 
 
 @app.route("/admin/divisions/<int:div_id>/score_manage")
@@ -1370,7 +1370,7 @@ def ui_ring_poomsae_divisions(ring_id):
         seq = division.ring_sequence  # 1-99 or None
         ranked = _build_poomsae_ranked(division.id)
         html = render_template(
-            "poomsae_results_fragment.html",
+            "group_results_fragment.html",
             division=division,
             ranked=ranked,
             scorekeeper_mode=True,
