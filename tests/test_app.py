@@ -2638,27 +2638,27 @@ class TestPoomsaeScoreRecording:
         assert "hx-patch" not in html or "event_status" not in html
 
 
-class TestPoomsaeResultsPage:
-    """Tests for the poomsae results page and fragment."""
+class TestGroupResultsPage:
+    """Tests for the group results page and fragment."""
 
-    def test_poomsae_results_page(self, client):
+    def test_group_results_page(self, client):
         div_id = _create_division(client, "World Class Poomsae", "poomsae").get_json()["id"]
 
         resp = client.get(f"/admin/divisions/{div_id}/group_results")
         assert resp.status_code == 200
         assert b"World Class Poomsae" in resp.data
 
-    def test_poomsae_results_page_not_found(self, client):
+    def test_group_results_page_not_found(self, client):
         resp = client.get("/admin/divisions/9999/group_results")
         assert resp.status_code == 404
 
-    def test_poomsae_results_fragment_empty(self, client):
+    def test_group_results_fragment_empty(self, client):
         div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
 
         resp = client.get(f"/ui/divisions/{div_id}/group_results_fragment")
         assert resp.status_code == 200
 
-    def test_poomsae_results_fragment_shows_competitors(self, client):
+    def test_group_results_fragment_shows_competitors(self, client):
         div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
         _add_competitors(client, div_id, ["Alice", "Bob"])
 
@@ -2667,7 +2667,7 @@ class TestPoomsaeResultsPage:
         assert b"Alice" in resp.data
         assert b"Bob" in resp.data
 
-    def test_poomsae_results_fragment_ranked_by_score(self, client):
+    def test_group_results_fragment_ranked_by_score(self, client):
         div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
         _add_competitors(client, div_id, ["Alice", "Bob", "Carol"])
 
@@ -2686,7 +2686,7 @@ class TestPoomsaeResultsPage:
         alice_pos = html.find("Alice")
         assert bob_pos < carol_pos < alice_pos
 
-    def test_poomsae_results_fragment_medals(self, client):
+    def test_group_results_fragment_medals(self, client):
         div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
         _add_competitors(client, div_id, ["Alice", "Bob", "Carol"])
 
@@ -2702,8 +2702,8 @@ class TestPoomsaeResultsPage:
         assert b"\xf0\x9f\xa5\x88" in resp.data  # 🥈
         assert b"\xf0\x9f\xa5\x89" in resp.data  # 🥉
 
-    def test_results_divisions_poomsae_links_to_poomsae_results(self, client):
-        """Poomsae division without a bracket links to the poomsae results page."""
+    def test_results_divisions_poomsae_links_to_group_results(self, client):
+        """Poomsae division without a bracket links to the group results page."""
         div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
 
         resp = client.get("/ui/results_divisions?event_type=poomsae")
@@ -3072,15 +3072,15 @@ class TestPoomsaePlacementsFragment:
         resp = client.get("/ui/divisions/9999/poomsae_placements_fragment")
         assert resp.status_code == 404
 
-    def test_poomsae_results_page_loads_placements_fragment(self, client):
-        """The read-only poomsae_results page references the placements fragment URL."""
+    def test_group_results_page_loads_placements_fragment(self, client):
+        """The read-only group_results page references the placements fragment URL."""
         div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
 
         resp = client.get(f"/admin/divisions/{div_id}/group_results")
         assert resp.status_code == 200
         assert b"poomsae_placements_fragment" in resp.data
 
-    def test_poomsae_results_page_no_score_entry(self, client):
+    def test_group_results_page_no_score_entry(self, client):
         """The public results page does not directly include score entry forms."""
         div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
 
@@ -3448,7 +3448,7 @@ class TestPoomsaeSequenceConflictPrevention:
 
 
 class TestPoomsaePlacementsNoScore:
-    """The poomsae_results (placements) page must NOT show raw score values."""
+    """The group_results (placements) page must NOT show raw score values."""
 
     def test_placements_fragment_hides_score_column(self, client):
         """After adding scores the placements fragment must not expose score values."""
