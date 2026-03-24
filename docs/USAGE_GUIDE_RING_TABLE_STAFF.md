@@ -83,7 +83,7 @@ These appear as score-entry tables, one per group division assigned to your ring
 3. Save each score — rankings update automatically.
 4. Click **Complete** to set the group to `Completed`.
 
-Division status can also be set to **Pending**, **In Progress**, or **Completed** from the admin score manage page.
+Division status is controlled either during division setup (via the ring assignment form in the admin interface) or by the scorekeeper using the **Reset**, **Start**, and **Complete** buttons; there is no separate status control on the admin score manage page.
 
 ---
 
