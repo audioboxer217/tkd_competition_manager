@@ -19,10 +19,11 @@ As a volunteer your primary responsibilities are:
 
 | Page | URL | Purpose |
 |------|-----|---------|
-| Tournament Results | `/results` | Read-only public results view |
-| Admin Dashboard | `/admin` | Admin only — do not use unless assigned |
+| Live View | `/` | | Read-only public view of current ring status |
+| Brackets and Tournament Results | `/results` | | Read-only public results view |
 
-If you need to know the current state of a ring or division, ask the ring operator or administrator.
+If you need to know the current state of a ring or division, first check the Live View. 
+Then ask the ring operator or administrator if unsure.
 
 ---
 
