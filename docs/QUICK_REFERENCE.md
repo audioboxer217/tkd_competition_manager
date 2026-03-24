@@ -95,7 +95,7 @@ One-page checklists for all roles during a live tournament.
 | `In Progress` | Currently live at the ring |
 | `Completed` | Normal win recorded; bracket advanced |
 | `Disqualification` | DQ result recorded; bracket advanced |
-| `Completed (Bye)` | Auto-assigned when no opponent; hidden from bracket display |
+| `Completed (Bye)` | Auto-assigned when no opponent; hidden on bracket management/scheduling view (still shown as "Bye" in Tournament Results) |
 
 ### Poomsae division event statuses
 
