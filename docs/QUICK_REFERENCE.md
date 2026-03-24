@@ -7,7 +7,7 @@ One-page checklists for all roles during a live tournament.
 ## Administrator
 
 ### Pre-competition setup
-- [ ] Log in at `/login` → redirected to **Admin Dashboard** (`/admin`)
+- [ ] Click **Admin Login** button in top-right and login → redirected to **Admin Dashboard** (`/admin`)
 - [ ] Create rings (**Manage Rings** panel → **Add Ring**)
 - [ ] Create Kyorugi divisions (**Kyorugi** tab → **Add Division**)
 - [ ] Create Poomsae/Breaking divisions (**Poomsae/Breaking** tab → **Add Division**)
@@ -39,23 +39,22 @@ One-page checklists for all roles during a live tournament.
 ## Ring / Table Staff
 
 ### Opening the ring
-- [ ] Open `/ring/<ring_id>/scorekeeper?event_type=kyorugi` or `?event_type=poomsae`
+- [ ] Open `/ring/<ring_id>/scorekeeper`
 - [ ] Confirm the correct tab is active (**Kyorugi** or **Poomsae/Breaking**)
 - [ ] First match visible with correct competitor names
 
-### Every kyorugi match
+### Every kyorugi or poomsae bracket match
 - [ ] Confirm **Chung (Blue)** and **Hong (Red)** names match athletes present
 - [ ] Click **Start** → match moves to `In Progress`
 - [ ] After match ends, select winner (tap Chung or Hong side)
 - [ ] Click **Normal Win** (standard result) or **Disqualification** (DQ result)
 - [ ] Confirm match card updates and bracket advances correctly
 
-### Every poomsae bracket match
-- [ ] Same flow as kyorugi: **Start** → select winner → **Normal Win** / **Disqualification**
-
 ### Poomsae group scoring
+- [ ] Click **Start** → group moves to `In Progress`
 - [ ] Enter score for each competitor (0.000 – 10.000)
 - [ ] Save — rankings update automatically
+- [ ] Click **Complete** → group moves to `Completed`
 
 ### Escalate immediately if
 - [ ] Wrong competitor name displayed
@@ -125,5 +124,5 @@ Use this when reporting an issue to admin:
 | Landing / Live View | `/` |
 | Login | `/login` |
 | Admin Dashboard | `/admin` |
-| Scorekeeper Console | `/ring/<ring_id>/scorekeeper?event_type=kyorugi` or `?event_type=poomsae` |
+| Scorekeeper Console | `/ring/<ring_id>/scorekeeper` |
 | Tournament Results | `/results` |
