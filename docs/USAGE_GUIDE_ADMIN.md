@@ -193,7 +193,7 @@ For **Group (Score-Based)** poomsae divisions only.
 | `In Progress` | Match is live; only one per ring at a time |
 | `Completed` | Normal win recorded; bracket advanced |
 | `Disqualification` | DQ result recorded; bracket advanced |
-| `Completed (Bye)` | Auto-set when one slot has no opponent; hidden from bracket display |
+| `Completed (Bye)` | Auto-set when one slot has no opponent; hidden from the admin bracket manage/scheduling list (still shown as a "Bye" in public/results brackets) |
 
 ### Poomsae division event statuses
 
