@@ -4,14 +4,12 @@ For scorekeepers and ring operators running live competition at an assigned ring
 
 ---
 
-## 1) Open your scorekeeper screen
-
-Your administrator will give you a URL that looks like one of these:
-
-- Kyorugi (sparring): `/ring/<ring_id>/scorekeeper?event_type=kyorugi`
-- Poomsae/Breaking (forms): `/ring/<ring_id>/scorekeeper?event_type=poomsae`
-
-The page title shows **Scorekeeper Console** followed by your ring name and current event type.
+## 1) Login and Open your scorekeeper screen
+- Go to /admin or click **Admin Login** on the top-right of the main page.
+- Sign in with your credentials.
+- After a successful login you are redirected to the Admin Dashboard (/admin).
+- Click the **Score Keeper** button for your Ring
+- The page title shows **Scorekeeper Console** followed by your ring name and current event type.
 
 ---
 
@@ -24,7 +22,7 @@ At the top of the page are two tabs:
 | **Kyorugi** | Sparring bracket matches |
 | **Poomsae/Breaking** | Forms/breaking bracket matches and group score events |
 
-Click the correct tab for your assigned event type. The active tab is highlighted.
+Click the correct tab for the current event type. The active tab is highlighted.
 
 ---
 
@@ -36,10 +34,8 @@ Each match is shown as a card on screen. Work through them in match-number order
 
 Each match card shows two sides:
 
-| Label | Corner |
-|-------|--------|
-| **Chung (Blue)** | Blue corner competitor |
-| **Hong (Red)** | Red corner competitor |
+- **Chung (Blue)**
+- **Hong (Red)**
 
 Confirm that the names shown match the athletes physically present at the ring before starting.
 
@@ -82,10 +78,12 @@ These look and behave exactly like Kyorugi match cards (Chung/Hong labels, Start
 
 These appear as score-entry tables, one per group division assigned to your ring. For each competitor:
 
-1. Enter or update the score (valid range: **0.000 – 10.000**).
-2. Save each score — rankings update automatically.
+1. Click **Start** to set the group to `In Progress`.
+2. Enter or update the score (valid range: **0.000 – 10.000**).
+3. Save each score — rankings update automatically.
+4. Click **Complete** to set the group to `Completed`.
 
-Division status can be set to **Pending**, **In Progress**, or **Completed** from the admin score manage page.
+Division status can also be set to **Pending**, **In Progress**, or **Completed** from the admin score manage page.
 
 ---
 
@@ -119,7 +117,7 @@ Stop and contact the on-duty administrator immediately if:
 
 ## 7) Ring open checklist
 
-- [ ] Open the correct scorekeeper URL (check ring number and event type tab)
+- [ ] Open the correct scorekeeper page (check ring number and event type tab)
 - [ ] First match is visible and competitors look correct
 - [ ] Only one match set to `In Progress` at a time
 - [ ] Winner is selected before clicking **Normal Win** or **Disqualification**
