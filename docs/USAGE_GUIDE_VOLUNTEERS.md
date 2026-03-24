@@ -19,8 +19,8 @@ As a volunteer your primary responsibilities are:
 
 | Page | URL | Purpose |
 |------|-----|---------|
-| Live View | `/` | | Read-only public view of current ring status |
-| Brackets and Tournament Results | `/results` | | Read-only public results view |
+| Live View | `/` | Read-only public view of current ring status |
+| Brackets and Tournament Results | `/results` | Read-only public results view |
 
 If you need to know the current state of a ring or division, first check the Live View. 
 Then ask the ring operator or administrator if unsure.
