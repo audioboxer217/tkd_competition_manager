@@ -3969,3 +3969,198 @@ class TestMatchAnalytics:
         assert "poomsae (group)" in out
         assert "Ring 1" in out
         assert "3:00" in out
+
+    # ------------------------------------------------------------------
+    # _build_output_rows
+    # ------------------------------------------------------------------
+
+    def test_build_output_rows_structure(self):
+        from datetime import timedelta
+
+        from scripts.match_analytics import _build_output_rows
+
+        by_event = {"kyorugi": {"count": 2, "avg": timedelta(seconds=120), "max": timedelta(seconds=180)}}
+        by_ring = {"Ring 1": {"count": 2, "avg": timedelta(seconds=120), "max": timedelta(seconds=180)}}
+
+        rows = _build_output_rows(by_event, by_ring)
+        assert len(rows) == 2
+
+        event_row = next(r for r in rows if r["group"] == "by_event_type")
+        assert event_row["category"] == "kyorugi"
+        assert event_row["count"] == 2
+        assert event_row["avg_seconds"] == 120
+        assert event_row["avg_formatted"] == "2:00"
+        assert event_row["longest_seconds"] == 180
+        assert event_row["longest_formatted"] == "3:00"
+
+        ring_row = next(r for r in rows if r["group"] == "by_ring")
+        assert ring_row["category"] == "Ring 1"
+
+    # ------------------------------------------------------------------
+    # main() — CSV format
+    # ------------------------------------------------------------------
+
+    def test_main_csv_no_data(self, capsys):
+        from scripts.match_analytics import main
+
+        main(fmt="csv")
+        out = capsys.readouterr().out
+        # No data: should print the no-data message, not CSV headers
+        assert "No timed event data found" in out
+
+    def test_main_csv_with_match_data(self, client, capsys):
+        import csv
+        import io
+        from datetime import datetime, timezone
+
+        from scripts.match_analytics import main
+
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_id = _create_division(client, "Kyorugi Div", "kyorugi").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _generate_bracket(client, div_id)
+
+        match = Match.query.filter_by(division_id=div_id).first()
+        match.ring_id = ring_id
+        match.start_time = datetime(2024, 1, 1, 10, 0, 0, tzinfo=timezone.utc)
+        match.end_time = datetime(2024, 1, 1, 10, 2, 0, tzinfo=timezone.utc)
+        db.session.commit()
+
+        main(fmt="csv")
+        out = capsys.readouterr().out
+
+        reader = csv.DictReader(io.StringIO(out))
+        rows = list(reader)
+        assert len(rows) == 2  # one by_event_type + one by_ring
+
+        event_row = next(r for r in rows if r["group"] == "by_event_type")
+        assert event_row["category"] == "kyorugi"
+        assert event_row["count"] == "1"
+        assert event_row["avg_seconds"] == "120"
+        assert event_row["avg_formatted"] == "2:00"
+        assert event_row["longest_seconds"] == "120"
+        assert event_row["longest_formatted"] == "2:00"
+
+        ring_row = next(r for r in rows if r["group"] == "by_ring")
+        assert ring_row["category"] == "Ring 1"
+
+    def test_main_csv_headers(self, client, capsys):
+        from datetime import datetime, timezone
+
+        from scripts.match_analytics import main
+
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_id = _create_division(client, "Kyorugi Div", "kyorugi").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _generate_bracket(client, div_id)
+
+        match = Match.query.filter_by(division_id=div_id).first()
+        match.ring_id = ring_id
+        match.start_time = datetime(2024, 1, 1, 10, 0, 0, tzinfo=timezone.utc)
+        match.end_time = datetime(2024, 1, 1, 10, 1, 0, tzinfo=timezone.utc)
+        db.session.commit()
+
+        main(fmt="csv")
+        out = capsys.readouterr().out
+        header_line = out.splitlines()[0]
+        assert "group" in header_line
+        assert "category" in header_line
+        assert "count" in header_line
+        assert "avg_seconds" in header_line
+        assert "longest_seconds" in header_line
+
+    # ------------------------------------------------------------------
+    # main() — JSON format
+    # ------------------------------------------------------------------
+
+    def test_main_json_no_data(self, capsys):
+        from scripts.match_analytics import main
+
+        main(fmt="json")
+        out = capsys.readouterr().out
+        # No data: should print the no-data message, not JSON
+        assert "No timed event data found" in out
+
+    def test_main_json_with_match_data(self, client, capsys):
+        import json
+        from datetime import datetime, timezone
+
+        from scripts.match_analytics import main
+
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_id = _create_division(client, "Kyorugi Div", "kyorugi").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _generate_bracket(client, div_id)
+
+        match = Match.query.filter_by(division_id=div_id).first()
+        match.ring_id = ring_id
+        match.start_time = datetime(2024, 1, 1, 10, 0, 0, tzinfo=timezone.utc)
+        match.end_time = datetime(2024, 1, 1, 10, 2, 0, tzinfo=timezone.utc)
+        db.session.commit()
+
+        main(fmt="json")
+        out = capsys.readouterr().out
+
+        data = json.loads(out)
+        assert "by_event_type" in data
+        assert "by_ring" in data
+
+        event_entries = data["by_event_type"]
+        assert len(event_entries) == 1
+        assert event_entries[0]["category"] == "kyorugi"
+        assert event_entries[0]["count"] == 1
+        assert event_entries[0]["avg_seconds"] == 120
+        assert event_entries[0]["avg_formatted"] == "2:00"
+        assert event_entries[0]["longest_seconds"] == 120
+        assert event_entries[0]["longest_formatted"] == "2:00"
+
+        ring_entries = data["by_ring"]
+        assert len(ring_entries) == 1
+        assert ring_entries[0]["category"] == "Ring 1"
+
+    def test_main_json_with_division_data(self, client, capsys):
+        import json
+        from datetime import datetime, timezone
+
+        from scripts.match_analytics import main
+
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_id = _create_division(client, "Poomsae Group", "poomsae").get_json()["id"]
+        _set_poomsae_style(client, div_id, "group")
+
+        div = db.session.get(Division, div_id)
+        div.ring_id = ring_id
+        div.start_time = datetime(2024, 1, 1, 10, 0, 0, tzinfo=timezone.utc)
+        div.end_time = datetime(2024, 1, 1, 10, 3, 0, tzinfo=timezone.utc)
+        db.session.commit()
+
+        main(fmt="json")
+        out = capsys.readouterr().out
+
+        data = json.loads(out)
+        event_entries = data["by_event_type"]
+        assert event_entries[0]["category"] == "poomsae (group)"
+        assert event_entries[0]["avg_seconds"] == 180
+        assert event_entries[0]["longest_formatted"] == "3:00"
+
+    def test_main_json_is_valid_json(self, client, capsys):
+        """JSON output must always be parseable regardless of data."""
+        import json
+        from datetime import datetime, timezone
+
+        from scripts.match_analytics import main
+
+        div_id = _create_division(client, "Kyorugi Div", "kyorugi").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _generate_bracket(client, div_id)
+
+        match = Match.query.filter_by(division_id=div_id).first()
+        match.start_time = datetime(2024, 1, 1, 10, 0, 0, tzinfo=timezone.utc)
+        match.end_time = datetime(2024, 1, 1, 10, 0, 45, tzinfo=timezone.utc)
+        db.session.commit()
+
+        main(fmt="json")
+        out = capsys.readouterr().out
+        # Should not raise
+        data = json.loads(out)
+        assert isinstance(data, dict)
