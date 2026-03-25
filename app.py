@@ -1104,8 +1104,8 @@ def ui_record_result(match_id):
         match.status = status
         match.winner_id = int(winner_id)
 
-        # Record end_time only if the match was actually started
-        if match.start_time is not None:
+        # Record end_time only if the match was actually started and end_time is not already set
+        if match.start_time is not None and match.end_time is None:
             match.end_time = datetime.now(timezone.utc)
 
         # --- BRACKET ADVANCEMENT LOGIC ---
