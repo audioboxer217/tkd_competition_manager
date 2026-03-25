@@ -2,6 +2,7 @@ import logging
 import math
 import os
 from collections import defaultdict
+from datetime import datetime, timezone
 from functools import wraps
 from urllib.parse import urlparse
 
@@ -100,6 +101,10 @@ class Match(db.Model):
     # Status: 'Pending', 'In Progress', 'Completed', 'Disqualification'
     status = db.Column(db.String(20), default="Pending")
     round_name = db.Column(db.String(50))  # e.g., 'Quarter-Final', 'Semi-Final'
+
+    # Timing: set when match is started / completed
+    start_time = db.Column(db.DateTime(timezone=True), nullable=True)
+    end_time = db.Column(db.DateTime(timezone=True), nullable=True)
 
     # Relationships
     competitor1 = db.relationship("Competitor", foreign_keys=[competitor1_id])
@@ -1081,6 +1086,8 @@ def ui_record_result(match_id):
                 return resp
 
         match.status = status
+        if match.start_time is None:
+            match.start_time = datetime.now(timezone.utc)
         db.session.commit()
         db.session.refresh(match)
         return _scorekeeper_match_card_html(match)
@@ -1091,6 +1098,10 @@ def ui_record_result(match_id):
 
         match.status = status
         match.winner_id = int(winner_id)
+
+        # Record end_time only if the match was actually started
+        if match.start_time is not None:
+            match.end_time = datetime.now(timezone.utc)
 
         # --- BRACKET ADVANCEMENT LOGIC ---
         if match.next_match_id:

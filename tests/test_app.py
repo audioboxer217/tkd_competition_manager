@@ -1173,6 +1173,82 @@ class TestUIMatchResult:
         db.session.refresh(second_match)
         assert second_match.status == "In Progress"
 
+    # ------------------------------------------------------------------
+    # Time tracking
+    # ------------------------------------------------------------------
+
+    def test_start_time_set_when_in_progress(self, client):
+        """start_time is recorded when a match is set to In Progress."""
+        div_id = _create_division(client).get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _generate_bracket(client, div_id)
+
+        match = Match.query.filter_by(division_id=div_id, round_name="Final").first()
+        assert match.start_time is None
+
+        client.post(f"/ui/matches/{match.id}/result", data={"status": "In Progress"})
+
+        db.session.refresh(match)
+        assert match.start_time is not None
+        assert match.end_time is None
+
+    def test_end_time_set_when_completed_after_start(self, client):
+        """end_time is recorded when a started match is completed."""
+        div_id = _create_division(client).get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _generate_bracket(client, div_id)
+
+        match = Match.query.filter_by(division_id=div_id, round_name="Final").first()
+        winner_id = match.competitor1_id
+
+        client.post(f"/ui/matches/{match.id}/result", data={"status": "In Progress"})
+        client.post(
+            f"/ui/matches/{match.id}/result",
+            data={"status": "Completed", "winner_id": str(winner_id)},
+        )
+
+        db.session.refresh(match)
+        assert match.start_time is not None
+        assert match.end_time is not None
+        assert match.end_time >= match.start_time
+
+    def test_end_time_not_set_for_disqualification_without_start(self, client):
+        """Neither start_time nor end_time is set when DSQ is issued without starting."""
+        div_id = _create_division(client).get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _generate_bracket(client, div_id)
+
+        match = Match.query.filter_by(division_id=div_id, round_name="Final").first()
+        winner_id = match.competitor1_id
+
+        client.post(
+            f"/ui/matches/{match.id}/result",
+            data={"status": "Disqualification", "winner_id": str(winner_id)},
+        )
+
+        db.session.refresh(match)
+        assert match.start_time is None
+        assert match.end_time is None
+
+    def test_end_time_set_for_disqualification_after_start(self, client):
+        """end_time is recorded when a DSQ is issued after the match has started."""
+        div_id = _create_division(client).get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _generate_bracket(client, div_id)
+
+        match = Match.query.filter_by(division_id=div_id, round_name="Final").first()
+        winner_id = match.competitor1_id
+
+        client.post(f"/ui/matches/{match.id}/result", data={"status": "In Progress"})
+        client.post(
+            f"/ui/matches/{match.id}/result",
+            data={"status": "Disqualification", "winner_id": str(winner_id)},
+        )
+
+        db.session.refresh(match)
+        assert match.start_time is not None
+        assert match.end_time is not None
+
 
 # ---------------------------------------------------------------------------
 # Scorekeeper matches fragment endpoint
