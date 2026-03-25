@@ -13,9 +13,15 @@ Only records with both ``start_time`` and ``end_time`` are included.
 
 Usage::
 
-    python scripts/match_analytics.py
+    python scripts/match_analytics.py                  # default: table
+    python scripts/match_analytics.py --format csv     # CSV output
+    python scripts/match_analytics.py --format json    # JSON output
 """
 
+import argparse
+import csv
+import json
+import sys
 from datetime import timedelta
 
 try:
@@ -109,6 +115,35 @@ def _stats_by_key(rows, key_field):
     return result
 
 
+def _build_output_rows(by_event: dict, by_ring: dict) -> list[dict]:
+    """Return a flat list of dicts suitable for CSV/JSON serialisation.
+
+    Each row contains:
+      group        – "by_event_type" or "by_ring"
+      category     – the group key (event type name or ring name)
+      count        – number of timed events
+      avg_seconds  – average duration in whole seconds
+      avg_formatted – average duration formatted as M:SS
+      longest_seconds  – longest duration in whole seconds
+      longest_formatted – longest duration formatted as M:SS
+    """
+    output = []
+    for group_label, stats in (("by_event_type", by_event), ("by_ring", by_ring)):
+        for category, s in stats.items():
+            output.append(
+                {
+                    "group": group_label,
+                    "category": category,
+                    "count": s["count"],
+                    "avg_seconds": int(s["avg"].total_seconds()),
+                    "avg_formatted": _fmt_duration(s["avg"]),
+                    "longest_seconds": int(s["max"].total_seconds()),
+                    "longest_formatted": _fmt_duration(s["max"]),
+                }
+            )
+    return output
+
+
 def _print_table(title: str, stats: dict) -> None:
     print(f"\n{'='*60}")
     print(f"  {title}")
@@ -125,7 +160,54 @@ def _print_table(title: str, stats: dict) -> None:
         )
 
 
-def main():
+def _output_table(by_event: dict, by_ring: dict, row_count: int) -> None:
+    """Print the default human-readable table format."""
+    print(f"\nAnalysing {row_count} timed event(s)…")
+    _print_table("Duration by Event Type", by_event)
+    _print_table("Duration by Ring", by_ring)
+    print()
+
+
+def _output_csv(by_event: dict, by_ring: dict) -> None:
+    """Write CSV rows to stdout."""
+    fieldnames = [
+        "group",
+        "category",
+        "count",
+        "avg_seconds",
+        "avg_formatted",
+        "longest_seconds",
+        "longest_formatted",
+    ]
+    writer = csv.DictWriter(sys.stdout, fieldnames=fieldnames, lineterminator="\n")
+    writer.writeheader()
+    for row in _build_output_rows(by_event, by_ring):
+        writer.writerow(row)
+
+
+def _output_json(by_event: dict, by_ring: dict) -> None:
+    """Write JSON to stdout."""
+    def _section(stats: dict) -> list[dict]:
+        return [
+            {
+                "category": category,
+                "count": s["count"],
+                "avg_seconds": int(s["avg"].total_seconds()),
+                "avg_formatted": _fmt_duration(s["avg"]),
+                "longest_seconds": int(s["max"].total_seconds()),
+                "longest_formatted": _fmt_duration(s["max"]),
+            }
+            for category, s in stats.items()
+        ]
+
+    payload = {
+        "by_event_type": _section(by_event),
+        "by_ring": _section(by_ring),
+    }
+    print(json.dumps(payload, indent=2))
+
+
+def main(fmt: str = "table") -> None:
     with app.app_context():
         match_rows = _collect_match_durations()
         division_rows = _collect_division_durations()
@@ -135,15 +217,25 @@ def main():
             print("No timed event data found (no records with both start_time and end_time).")
             return
 
-        print(f"\nAnalysing {len(rows)} timed event(s)…")
-
         by_event = _stats_by_key(rows, "event_type")
         by_ring = _stats_by_key(rows, "ring_name")
 
-        _print_table("Duration by Event Type", by_event)
-        _print_table("Duration by Ring", by_ring)
-        print()
+        if fmt == "csv":
+            _output_csv(by_event, by_ring)
+        elif fmt == "json":
+            _output_json(by_event, by_ring)
+        else:
+            _output_table(by_event, by_ring, len(rows))
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Match duration analytics.")
+    parser.add_argument(
+        "--format",
+        dest="fmt",
+        choices=["table", "csv", "json"],
+        default="table",
+        help="Output format (default: table)",
+    )
+    args = parser.parse_args()
+    main(fmt=args.fmt)
