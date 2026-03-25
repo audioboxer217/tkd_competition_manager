@@ -175,6 +175,7 @@ def seed():
     app_env = (os.environ.get("APP_ENV") or os.environ.get("app_env") or "").lower()
     if app_env != "dev":
         print("ERROR: Refusing to seed database because APP_ENV/app_env is not explicitly set to 'dev'.")
+        sys.exit(1)
 
     with app.app_context():
         db.create_all()

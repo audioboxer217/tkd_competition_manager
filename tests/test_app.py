@@ -4164,3 +4164,96 @@ class TestMatchAnalytics:
         # Should not raise
         data = json.loads(out)
         assert isinstance(data, dict)
+
+
+# ---------------------------------------------------------------------------
+# seed_dev_db.py
+# ---------------------------------------------------------------------------
+
+
+class TestSeedDevDb:
+    """Tests for scripts/seed_dev_db.py seed() function."""
+
+    def test_seed_refuses_unset_app_env(self, monkeypatch):
+        """seed() must exit with code 1 when APP_ENV is not set."""
+        monkeypatch.delenv("APP_ENV", raising=False)
+        monkeypatch.delenv("app_env", raising=False)
+
+        from scripts.seed_dev_db import seed
+
+        with pytest.raises(SystemExit) as exc_info:
+            seed()
+        assert exc_info.value.code == 1
+
+    def test_seed_refuses_prod_env(self, monkeypatch):
+        """seed() must exit with code 1 when APP_ENV is 'prod'."""
+        monkeypatch.setenv("APP_ENV", "prod")
+
+        from scripts.seed_dev_db import seed
+
+        with pytest.raises(SystemExit) as exc_info:
+            seed()
+        assert exc_info.value.code == 1
+
+    def test_seed_refuses_non_empty_db(self, monkeypatch):
+        """seed() must exit with code 1 when the database already contains data."""
+        monkeypatch.setenv("APP_ENV", "dev")
+
+        ring = Ring(name="Existing Ring")
+        db.session.add(ring)
+        db.session.commit()
+
+        from scripts.seed_dev_db import seed
+
+        with pytest.raises(SystemExit) as exc_info:
+            seed()
+        assert exc_info.value.code == 1
+
+    def test_seed_creates_correct_record_counts(self, monkeypatch):
+        """Seeding should create 6 rings, 12 divisions, 48 competitors, and 24 matches."""
+        monkeypatch.setenv("APP_ENV", "dev")
+
+        from scripts.seed_dev_db import seed
+
+        seed()
+
+        assert Ring.query.count() == 6
+        # 6 kyorugi + 2 poomsae bracket + 2 breaking group + 2 poomsae group
+        assert Division.query.count() == 12
+        # 12 divisions × 4 competitors each
+        assert Competitor.query.count() == 48
+        # 8 bracket divisions × 3 matches each (4 competitors → 2 semi-finals + 1 final)
+        assert Match.query.count() == 24
+
+    def test_seed_ring_assignments(self, monkeypatch):
+        """Each ring should have both a kyorugi and a poomsae division assigned."""
+        monkeypatch.setenv("APP_ENV", "dev")
+
+        from scripts.seed_dev_db import seed
+
+        seed()
+
+        rings = Ring.query.all()
+        for ring in rings:
+            divisions = Division.query.filter_by(ring_id=ring.id).all()
+            event_types = {d.event_type for d in divisions}
+            assert "kyorugi" in event_types, f"{ring.name} is missing a kyorugi division"
+            assert "poomsae" in event_types, f"{ring.name} is missing a poomsae division"
+
+    def test_seed_match_number_sequencing(self, monkeypatch):
+        """All match numbers should follow ring.id * 100 + sequence (1–99 range per ring)."""
+        monkeypatch.setenv("APP_ENV", "dev")
+
+        from scripts.seed_dev_db import seed
+
+        seed()
+
+        matches = Match.query.all()
+        assert matches, "Expected matches to be created"
+        for match in matches:
+            ring_id = match.ring_id
+            base = ring_id * 100
+            assert base < match.match_number <= base + 99, (
+                f"Match {match.id} number {match.match_number} is outside "
+                f"expected range ({base+1}–{base+99}) for ring {ring_id}"
+            )
