@@ -60,6 +60,7 @@ class Ring(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(50), nullable=False)  # e.g., 'Ring 1'
     matches = db.relationship("Match", backref="ring", lazy=True)
+    divisions = db.relationship("Division", backref="ring", lazy=True)
 
 
 VALID_EVENT_TYPES = {"poomsae", "kyorugi"}
