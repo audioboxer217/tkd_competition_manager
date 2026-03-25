@@ -172,9 +172,9 @@ def _generate_bracket(division: Division, competitors: list[Competitor], ring: R
 
 
 def seed():
-    if os.environ.get("app_env") == "prod":
-        print("ERROR: seed_dev_db.py must not be run against the production environment (app_env=prod). Aborting.")
-        sys.exit(1)
+    app_env = (os.environ.get("APP_ENV") or os.environ.get("app_env") or "").lower()
+    if app_env != "dev":
+        print("ERROR: Refusing to seed database because APP_ENV/app_env is not explicitly set to 'dev'.")
 
     with app.app_context():
         db.create_all()
