@@ -1,9 +1,9 @@
-"""Migration: add start_time and end_time columns to the match table.
+"""Migration: add start_time and end_time columns to the match and division tables.
 
 Run this script once against an existing database that was created before the
-``start_time`` / ``end_time`` columns were added to the ``Match`` model.
-It is safe to run multiple times – it checks whether each column already
-exists before applying any changes.
+``start_time`` / ``end_time`` columns were added to the ``Match`` and
+``Division`` models.  It is safe to run multiple times – it checks whether
+each column already exists before applying any changes.
 
 Usage::
 
@@ -48,13 +48,14 @@ with app.app_context():
         dialect = conn.dialect.name
         col_type = "TIMESTAMP WITH TIME ZONE" if dialect == "postgresql" else "DATETIME"
 
-        for col in ("start_time", "end_time"):
-            if column_exists(conn, "match", col):
-                print(f"Column '{col}' already exists – nothing to do.")
-            else:
-                print(f"Adding '{col}' column to match table…")
-                conn.execute(text(f"ALTER TABLE match ADD COLUMN {col} {col_type}"))
-                conn.commit()
-                print(f"Column '{col}' added.")
+        for table in ("match", "division"):
+            for col in ("start_time", "end_time"):
+                if column_exists(conn, table, col):
+                    print(f"Column '{col}' on '{table}' already exists – nothing to do.")
+                else:
+                    print(f"Adding '{col}' column to {table} table…")
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}"))
+                    conn.commit()
+                    print(f"Column '{col}' added.")
 
     print("Migration complete.")

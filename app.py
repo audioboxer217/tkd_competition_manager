@@ -74,6 +74,11 @@ class Division(db.Model):
     ring_id = db.Column(db.Integer, db.ForeignKey("ring.id"), nullable=True)  # For poomsae: which ring is hosting this event
     ring_sequence = db.Column(db.Integer, nullable=True)  # For poomsae: display order within the ring (1, 2, 3, ...)
     event_status = db.Column(db.String(20), nullable=False, default="Pending")  # For poomsae: 'Pending', 'In Progress', 'Completed'
+
+    # Timing for group poomsae events: set when the division is started/completed
+    start_time = db.Column(db.DateTime(timezone=True), nullable=True)
+    end_time = db.Column(db.DateTime(timezone=True), nullable=True)
+
     competitors = db.relationship("Competitor", backref="division", lazy=True)
     matches = db.relationship("Match", backref="division", lazy=True)
 
@@ -1263,6 +1268,15 @@ def ui_update_event_status(div_id):
     if event_status not in ("Pending", "In Progress", "Completed"):
         return "Invalid status.", 400
     division.event_status = event_status
+    if event_status == "In Progress":
+        if division.start_time is None:
+            division.start_time = datetime.now(timezone.utc)
+    elif event_status == "Completed":
+        if division.start_time is not None and division.end_time is None:
+            division.end_time = datetime.now(timezone.utc)
+    elif event_status == "Pending":
+        division.start_time = None
+        division.end_time = None
     db.session.commit()
     ranked = _build_poomsae_ranked(div_id)
     return render_template(
