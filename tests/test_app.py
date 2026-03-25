@@ -2517,6 +2517,78 @@ class TestPoomsaeScorekeeperStatus:
         assert b"Start" in resp.data
         assert b"Complete" in resp.data
 
+    # ------------------------------------------------------------------
+    # Time tracking
+    # ------------------------------------------------------------------
+
+    def test_start_time_set_when_in_progress(self, client):
+        """start_time is recorded when a group division is set to In Progress."""
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+
+        from app import Division, db
+        div = db.session.get(Division, div_id)
+        assert div.start_time is None
+
+        client.patch(f"/ui/divisions/{div_id}/event_status", data={"event_status": "In Progress"})
+
+        db.session.refresh(div)
+        assert div.start_time is not None
+        assert div.end_time is None
+
+    def test_start_time_not_overwritten_on_repeated_in_progress(self, client):
+        """Calling In Progress when already In Progress does not overwrite start_time."""
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+
+        client.patch(f"/ui/divisions/{div_id}/event_status", data={"event_status": "In Progress"})
+
+        from app import Division, db
+        div = db.session.get(Division, div_id)
+        original_start = div.start_time
+        assert original_start is not None
+
+        # Call In Progress again without resetting; start_time must not change
+        client.patch(f"/ui/divisions/{div_id}/event_status", data={"event_status": "In Progress"})
+
+        db.session.refresh(div)
+        assert div.start_time == original_start
+
+    def test_end_time_set_when_completed_after_start(self, client):
+        """end_time is recorded when a started group division is completed."""
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+
+        client.patch(f"/ui/divisions/{div_id}/event_status", data={"event_status": "In Progress"})
+        client.patch(f"/ui/divisions/{div_id}/event_status", data={"event_status": "Completed"})
+
+        from app import Division, db
+        div = db.session.get(Division, div_id)
+        assert div.start_time is not None
+        assert div.end_time is not None
+        assert div.end_time >= div.start_time
+
+    def test_end_time_not_set_for_completed_without_start(self, client):
+        """end_time is not set when Completed is triggered without a prior In Progress."""
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+
+        client.patch(f"/ui/divisions/{div_id}/event_status", data={"event_status": "Completed"})
+
+        from app import Division, db
+        div = db.session.get(Division, div_id)
+        assert div.start_time is None
+        assert div.end_time is None
+
+    def test_reset_clears_both_times(self, client):
+        """Resetting to Pending clears start_time and end_time."""
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+
+        client.patch(f"/ui/divisions/{div_id}/event_status", data={"event_status": "In Progress"})
+        client.patch(f"/ui/divisions/{div_id}/event_status", data={"event_status": "Completed"})
+        client.patch(f"/ui/divisions/{div_id}/event_status", data={"event_status": "Pending"})
+
+        from app import Division, db
+        div = db.session.get(Division, div_id)
+        assert div.start_time is None
+        assert div.end_time is None
+
 
 class TestPoomsaeScoreRecording:
     """Tests for recording poomsae scores (POST /ui/divisions/<id>/competitors/<id>/score)."""

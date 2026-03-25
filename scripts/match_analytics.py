@@ -6,7 +6,10 @@ Prints summary tables for:
 - Longest match duration by event type (kyorugi, poomsae)
 - Longest match duration by ring
 
-Only matches with both ``start_time`` and ``end_time`` recorded are included.
+Covers both bracket matches (kyorugi and poomsae bracket) tracked via the
+Match model and group-based poomsae divisions tracked via the Division model.
+
+Only records with both ``start_time`` and ``end_time`` are included.
 
 Usage::
 
@@ -24,7 +27,7 @@ add_repo_root_to_path()
 
 from sqlalchemy.orm import joinedload
 
-from app import Match, app
+from app import Division, Match, app
 
 
 def _fmt_duration(td: timedelta) -> str:
@@ -34,8 +37,8 @@ def _fmt_duration(td: timedelta) -> str:
     return f"{minutes}:{seconds:02d}"
 
 
-def _collect_durations():
-    """Return a list of dicts with match duration data for timed matches."""
+def _collect_match_durations():
+    """Return duration rows from bracket matches (Match model)."""
     matches = (
         Match.query.options(joinedload(Match.division), joinedload(Match.ring))
         .filter(
@@ -54,8 +57,35 @@ def _collect_durations():
         ring_name = match.ring.name if match.ring else "Unassigned"
         rows.append(
             {
-                "match_id": match.id,
                 "event_type": event_type,
+                "ring_name": ring_name,
+                "duration": duration,
+            }
+        )
+    return rows
+
+
+def _collect_division_durations():
+    """Return duration rows from group poomsae divisions (Division model)."""
+    divisions = (
+        Division.query.options(joinedload(Division.ring))
+        .filter(
+            Division.poomsae_style == "group",
+            Division.start_time.isnot(None),
+            Division.end_time.isnot(None),
+        )
+        .all()
+    )
+
+    rows = []
+    for div in divisions:
+        duration = div.end_time - div.start_time
+        if duration.total_seconds() <= 0:
+            continue
+        ring_name = div.ring.name if div.ring else "Unassigned"
+        rows.append(
+            {
+                "event_type": "poomsae (group)",
                 "ring_name": ring_name,
                 "duration": duration,
             }
@@ -97,19 +127,21 @@ def _print_table(title: str, stats: dict) -> None:
 
 def main():
     with app.app_context():
-        rows = _collect_durations()
+        match_rows = _collect_match_durations()
+        division_rows = _collect_division_durations()
+        rows = match_rows + division_rows
 
         if not rows:
-            print("No timed match data found (no matches with both start_time and end_time).")
+            print("No timed event data found (no records with both start_time and end_time).")
             return
 
-        print(f"\nAnalysing {len(rows)} timed match(es)…")
+        print(f"\nAnalysing {len(rows)} timed event(s)…")
 
         by_event = _stats_by_key(rows, "event_type")
         by_ring = _stats_by_key(rows, "ring_name")
 
-        _print_table("Match Duration by Event Type", by_event)
-        _print_table("Match Duration by Ring", by_ring)
+        _print_table("Duration by Event Type", by_event)
+        _print_table("Duration by Ring", by_ring)
         print()
 
 
