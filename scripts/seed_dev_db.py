@@ -203,7 +203,7 @@ def seed():
         # ------------------------------------------------------------------
         print("Creating kyorugi divisions...")
         for (div_name, gender), ring in zip(KYORUGI_DIVISIONS, rings):
-            division = Division(name=div_name, event_type="kyorugi")
+            division = Division(name=div_name, event_type="kyorugi", ring_id=ring.id)
             db.session.add(division)
             db.session.flush()
 
