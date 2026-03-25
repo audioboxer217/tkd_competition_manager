@@ -3699,3 +3699,273 @@ class TestCompletedGroupDivisionVisibility:
         resp = client.get("/ui/public_rings?event_type=poomsae")
         assert resp.status_code == 200
         assert b"Running Group" in resp.data
+
+
+# ---------------------------------------------------------------------------
+# match_analytics.py
+# ---------------------------------------------------------------------------
+
+
+class TestMatchAnalytics:
+    """Tests for the analytics helper functions in scripts/match_analytics.py."""
+
+    # ------------------------------------------------------------------
+    # Pure helpers
+    # ------------------------------------------------------------------
+
+    def test_fmt_duration_seconds_only(self):
+        from datetime import timedelta
+
+        from scripts.match_analytics import _fmt_duration
+
+        assert _fmt_duration(timedelta(seconds=45)) == "0:45"
+
+    def test_fmt_duration_minutes_and_seconds(self):
+        from datetime import timedelta
+
+        from scripts.match_analytics import _fmt_duration
+
+        assert _fmt_duration(timedelta(seconds=134)) == "2:14"
+
+    def test_fmt_duration_zero(self):
+        from datetime import timedelta
+
+        from scripts.match_analytics import _fmt_duration
+
+        assert _fmt_duration(timedelta(seconds=0)) == "0:00"
+
+    def test_stats_by_key_single_group(self):
+        from datetime import timedelta
+
+        from scripts.match_analytics import _stats_by_key
+
+        rows = [
+            {"event_type": "kyorugi", "ring_name": "Ring 1", "duration": timedelta(seconds=120)},
+            {"event_type": "kyorugi", "ring_name": "Ring 1", "duration": timedelta(seconds=180)},
+        ]
+        stats = _stats_by_key(rows, "event_type")
+        assert "kyorugi" in stats
+        assert stats["kyorugi"]["count"] == 2
+        assert stats["kyorugi"]["avg"] == timedelta(seconds=150)
+        assert stats["kyorugi"]["max"] == timedelta(seconds=180)
+
+    def test_stats_by_key_multiple_groups(self):
+        from datetime import timedelta
+
+        from scripts.match_analytics import _stats_by_key
+
+        rows = [
+            {"event_type": "kyorugi", "ring_name": "Ring 1", "duration": timedelta(seconds=90)},
+            {"event_type": "poomsae", "ring_name": "Ring 2", "duration": timedelta(seconds=60)},
+            {"event_type": "kyorugi", "ring_name": "Ring 1", "duration": timedelta(seconds=150)},
+        ]
+        stats = _stats_by_key(rows, "event_type")
+        assert stats["kyorugi"]["count"] == 2
+        assert stats["kyorugi"]["avg"] == timedelta(seconds=120)
+        assert stats["kyorugi"]["max"] == timedelta(seconds=150)
+        assert stats["poomsae"]["count"] == 1
+        assert stats["poomsae"]["max"] == timedelta(seconds=60)
+
+    def test_stats_by_key_empty(self):
+        from scripts.match_analytics import _stats_by_key
+
+        assert _stats_by_key([], "event_type") == {}
+
+    # ------------------------------------------------------------------
+    # _collect_match_durations
+    # ------------------------------------------------------------------
+
+    def test_collect_match_durations_returns_timed_matches(self, client):
+        from datetime import datetime, timedelta, timezone
+
+        from scripts.match_analytics import _collect_match_durations
+
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_id = _create_division(client, "Kyorugi Div", "kyorugi").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _generate_bracket(client, div_id)
+
+        match = Match.query.filter_by(division_id=div_id).first()
+        match.ring_id = ring_id
+        match.start_time = datetime(2024, 1, 1, 10, 0, 0, tzinfo=timezone.utc)
+        match.end_time = datetime(2024, 1, 1, 10, 2, 30, tzinfo=timezone.utc)
+        db.session.commit()
+
+        rows = _collect_match_durations()
+        assert len(rows) == 1
+        assert rows[0]["event_type"] == "kyorugi"
+        assert rows[0]["ring_name"] == "Ring 1"
+        assert rows[0]["duration"] == timedelta(minutes=2, seconds=30)
+
+    def test_collect_match_durations_excludes_untimed(self, client):
+        from scripts.match_analytics import _collect_match_durations
+
+        div_id = _create_division(client, "Kyorugi Div", "kyorugi").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _generate_bracket(client, div_id)
+        # No start/end times set
+
+        rows = _collect_match_durations()
+        assert rows == []
+
+    def test_collect_match_durations_excludes_zero_duration(self, client):
+        from datetime import datetime, timezone
+
+        from scripts.match_analytics import _collect_match_durations
+
+        div_id = _create_division(client, "Kyorugi Div", "kyorugi").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _generate_bracket(client, div_id)
+
+        match = Match.query.filter_by(division_id=div_id).first()
+        same_time = datetime(2024, 1, 1, 10, 0, 0, tzinfo=timezone.utc)
+        match.start_time = same_time
+        match.end_time = same_time
+        db.session.commit()
+
+        rows = _collect_match_durations()
+        assert rows == []
+
+    def test_collect_match_durations_unassigned_ring(self, client):
+        from datetime import datetime, timezone
+
+        from scripts.match_analytics import _collect_match_durations
+
+        div_id = _create_division(client, "Kyorugi Div", "kyorugi").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _generate_bracket(client, div_id)
+
+        match = Match.query.filter_by(division_id=div_id).first()
+        match.start_time = datetime(2024, 1, 1, 10, 0, 0, tzinfo=timezone.utc)
+        match.end_time = datetime(2024, 1, 1, 10, 1, 0, tzinfo=timezone.utc)
+        db.session.commit()
+
+        rows = _collect_match_durations()
+        assert len(rows) == 1
+        assert rows[0]["ring_name"] == "Unassigned"
+
+    # ------------------------------------------------------------------
+    # _collect_division_durations
+    # ------------------------------------------------------------------
+
+    def test_collect_division_durations_returns_timed_group_divisions(self, client):
+        from datetime import datetime, timedelta, timezone
+
+        from scripts.match_analytics import _collect_division_durations
+
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_id = _create_division(client, "Poomsae Group", "poomsae").get_json()["id"]
+        _set_poomsae_style(client, div_id, "group")
+
+        div = db.session.get(Division, div_id)
+        div.ring_id = ring_id
+        div.start_time = datetime(2024, 1, 1, 10, 0, 0, tzinfo=timezone.utc)
+        div.end_time = datetime(2024, 1, 1, 10, 3, 0, tzinfo=timezone.utc)
+        db.session.commit()
+
+        rows = _collect_division_durations()
+        assert len(rows) == 1
+        assert rows[0]["event_type"] == "poomsae (group)"
+        assert rows[0]["ring_name"] == "Ring 1"
+        assert rows[0]["duration"] == timedelta(minutes=3)
+
+    def test_collect_division_durations_excludes_untimed(self, client):
+        from scripts.match_analytics import _collect_division_durations
+
+        div_id = _create_division(client, "Poomsae Group", "poomsae").get_json()["id"]
+        _set_poomsae_style(client, div_id, "group")
+        # No times set
+
+        rows = _collect_division_durations()
+        assert rows == []
+
+    def test_collect_division_durations_excludes_bracket_style(self, client):
+        from datetime import datetime, timezone
+
+        from scripts.match_analytics import _collect_division_durations
+
+        div_id = _create_division(client, "Poomsae Bracket", "poomsae").get_json()["id"]
+        _set_poomsae_style(client, div_id, "bracket")
+
+        div = db.session.get(Division, div_id)
+        div.start_time = datetime(2024, 1, 1, 10, 0, 0, tzinfo=timezone.utc)
+        div.end_time = datetime(2024, 1, 1, 10, 3, 0, tzinfo=timezone.utc)
+        db.session.commit()
+
+        rows = _collect_division_durations()
+        assert rows == []
+
+    def test_collect_division_durations_unassigned_ring(self, client):
+        from datetime import datetime, timezone
+
+        from scripts.match_analytics import _collect_division_durations
+
+        div_id = _create_division(client, "Poomsae Group", "poomsae").get_json()["id"]
+        _set_poomsae_style(client, div_id, "group")
+
+        div = db.session.get(Division, div_id)
+        div.start_time = datetime(2024, 1, 1, 10, 0, 0, tzinfo=timezone.utc)
+        div.end_time = datetime(2024, 1, 1, 10, 1, 30, tzinfo=timezone.utc)
+        db.session.commit()
+
+        rows = _collect_division_durations()
+        assert len(rows) == 1
+        assert rows[0]["ring_name"] == "Unassigned"
+
+    # ------------------------------------------------------------------
+    # main() — no data
+    # ------------------------------------------------------------------
+
+    def test_main_no_data(self, capsys):
+        from scripts.match_analytics import main
+
+        main()
+        captured = capsys.readouterr()
+        assert "No timed event data found" in captured.out
+
+    # ------------------------------------------------------------------
+    # main() — with data
+    # ------------------------------------------------------------------
+
+    def test_main_with_match_data(self, client, capsys):
+        from datetime import datetime, timezone
+
+        from scripts.match_analytics import main
+
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_id = _create_division(client, "Kyorugi Div", "kyorugi").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _generate_bracket(client, div_id)
+
+        match = Match.query.filter_by(division_id=div_id).first()
+        match.ring_id = ring_id
+        match.start_time = datetime(2024, 1, 1, 10, 0, 0, tzinfo=timezone.utc)
+        match.end_time = datetime(2024, 1, 1, 10, 2, 0, tzinfo=timezone.utc)
+        db.session.commit()
+
+        main()
+        out = capsys.readouterr().out
+        assert "kyorugi" in out
+        assert "Ring 1" in out
+        assert "2:00" in out
+
+    def test_main_with_division_data(self, client, capsys):
+        from datetime import datetime, timezone
+
+        from scripts.match_analytics import main
+
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_id = _create_division(client, "Poomsae Group", "poomsae").get_json()["id"]
+        _set_poomsae_style(client, div_id, "group")
+
+        div = db.session.get(Division, div_id)
+        div.ring_id = ring_id
+        div.start_time = datetime(2024, 1, 1, 10, 0, 0, tzinfo=timezone.utc)
+        div.end_time = datetime(2024, 1, 1, 10, 3, 0, tzinfo=timezone.utc)
+        db.session.commit()
+
+        main()
+        out = capsys.readouterr().out
+        assert "poomsae (group)" in out
+        assert "Ring 1" in out
+        assert "3:00" in out
