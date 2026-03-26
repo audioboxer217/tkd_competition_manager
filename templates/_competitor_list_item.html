@@ -1,7 +1,7 @@
 {% set up_disabled = ' disabled' if competitor_index == 0 else '' %}
 {% set down_disabled = ' disabled' if competitor_index == (total_competitors - 1) else '' %}
 <li style="display: flex; justify-content: space-between; align-items: center; padding: 8px 10px;">
-    <span>{{ competitor.name }}{% if competitor.school %} <span style="color: #64748b; font-size: 0.85rem;">({{ competitor.school }})</span>{% endif %}</span>
+    <span>{{ competitor.name }}</span>
     <div style="display: flex; gap: 4px;">
         <button{{ up_disabled }} hx-post="/ui/divisions/{{ div_id }}/competitors/{{ competitor.id }}/move"
             hx-vals='{"direction":"up"}' hx-target="#competitor-list" hx-swap="innerHTML"
