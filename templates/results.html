@@ -117,6 +117,57 @@
             background: #cbd5e1;
             color: #0f172a;
         }
+
+        .search-bar {
+            max-width: 700px;
+            margin: 0 auto 20px;
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .search-bar select {
+            padding: 8px 10px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            background: white;
+            color: #0f172a;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+
+        .search-bar input[type="text"] {
+            flex: 1;
+            padding: 8px 12px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            color: #0f172a;
+            outline: none;
+        }
+
+        .search-bar input[type="text"]:focus {
+            border-color: #2563eb;
+            box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+        }
+
+        .search-bar .btn-clear {
+            background: #e2e8f0;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-size: 0.85rem;
+            color: #475569;
+            cursor: pointer;
+            flex-shrink: 0;
+            display: none;
+        }
+
+        .search-bar .btn-clear:hover {
+            background: #cbd5e1;
+            color: #0f172a;
+        }
     </style>
 </head>
 
@@ -134,9 +185,17 @@
         <button id="tab-poomsae" class="tab-btn" type="button" onclick="switchResultsEvent('poomsae')">Poomsae/Breaking</button>
     </div>
 
+    <div class="search-bar">
+        <select id="search-by" onchange="triggerSearch()">
+            <option value="name">Name</option>
+            <option value="school">School</option>
+        </select>
+        <input type="text" id="search-input" placeholder="Search competitors…"
+               oninput="triggerSearch()" autocomplete="off" />
+        <button class="btn-clear" id="btn-clear" onclick="clearSearch()" type="button">Clear</button>
+    </div>
+
     <div id="divisions-container"
-         hx-get="/ui/results_divisions?event_type=kyorugi"
-         hx-trigger="load"
          hx-swap="innerHTML">
         <div class="empty-state">Loading divisions...</div>
     </div>
@@ -144,6 +203,42 @@
     <script>
         const RESULTS_EVENT_STORAGE_KEY = 'resultsViewEventType';
         const VALID_EVENT_TYPES = ['kyorugi', 'poomsae'];
+        const SEARCH_DEBOUNCE_MS = 300;
+
+        let searchDebounceTimer = null;
+
+        function buildResultsUrl(eventType) {
+            const search = document.getElementById('search-input').value.trim();
+            const searchBy = document.getElementById('search-by').value;
+            let url = '/ui/results_divisions?event_type=' + eventType;
+            if (search) {
+                url += '&search=' + encodeURIComponent(search) + '&search_by=' + encodeURIComponent(searchBy);
+            }
+            return url;
+        }
+
+        function triggerSearch() {
+            const search = document.getElementById('search-input').value;
+            document.getElementById('btn-clear').style.display = search ? 'block' : 'none';
+            clearTimeout(searchDebounceTimer);
+            searchDebounceTimer = setTimeout(function () {
+                const eventType = getCurrentResultsEvent();
+                htmx.ajax('GET', buildResultsUrl(eventType), {
+                    target: '#divisions-container',
+                    swap: 'innerHTML'
+                });
+            }, SEARCH_DEBOUNCE_MS);
+        }
+
+        function clearSearch() {
+            document.getElementById('search-input').value = '';
+            document.getElementById('btn-clear').style.display = 'none';
+            const eventType = getCurrentResultsEvent();
+            htmx.ajax('GET', buildResultsUrl(eventType), {
+                target: '#divisions-container',
+                swap: 'innerHTML'
+            });
+        }
 
         function getCurrentResultsEvent() {
             const activeTab = document.querySelector('.tab-btn.active');
@@ -153,8 +248,6 @@
         function applyResultsEvent(eventType) {
             document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
             document.getElementById('tab-' + eventType).classList.add('active');
-            const container = document.getElementById('divisions-container');
-            container.setAttribute('hx-get', '/ui/results_divisions?event_type=' + eventType);
         }
 
         function switchResultsEvent(eventType) {
@@ -163,7 +256,7 @@
             }
             localStorage.setItem(RESULTS_EVENT_STORAGE_KEY, eventType);
             applyResultsEvent(eventType);
-            htmx.ajax('GET', '/ui/results_divisions?event_type=' + eventType, {
+            htmx.ajax('GET', buildResultsUrl(eventType), {
                 target: '#divisions-container',
                 swap: 'innerHTML'
             });
@@ -173,6 +266,10 @@
             const saved = localStorage.getItem(RESULTS_EVENT_STORAGE_KEY);
             const initial = VALID_EVENT_TYPES.includes(saved) ? saved : 'kyorugi';
             applyResultsEvent(initial);
+            htmx.ajax('GET', buildResultsUrl(initial), {
+                target: '#divisions-container',
+                swap: 'innerHTML'
+            });
         })();
     </script>
 
