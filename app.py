@@ -700,11 +700,13 @@ def ui_results_divisions():
     # competitor whose name matches (case-insensitive substring match).
     if search:
         matching_division_ids = {
-            comp.division_id
-            for comp in Competitor.query.filter(
+            row.division_id
+            for row in Competitor.query.with_entities(Competitor.division_id)
+            .filter(
                 Competitor.division_id.in_([d.id for d in divisions]),
                 Competitor.name.ilike(f"%{search}%"),
-            ).all()
+            )
+            .distinct()
         }
         divisions = [d for d in divisions if d.id in matching_division_ids]
 
