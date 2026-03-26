@@ -696,20 +696,19 @@ def ui_results_divisions():
 
     divisions = Division.query.filter_by(event_type=event_type).order_by(Division.name).all()
 
-    # When a search term is provided, keep only divisions that contain a
+    # Base query: all divisions for the given event type.
+    division_query = Division.query.filter_by(event_type=event_type)
+
+    # When a search term is provided, restrict to divisions that contain at least one
     # competitor whose name matches (case-insensitive substring match).
     if search:
-        matching_division_ids = {
-            row.division_id
-            for row in Competitor.query.with_entities(Competitor.division_id)
-            .filter(
-                Competitor.division_id.in_([d.id for d in divisions]),
-                Competitor.name.ilike(f"%{search}%"),
-            )
+        division_query = (
+            division_query.join(Competitor, Division.id == Competitor.division_id)
+            .filter(Competitor.name.ilike(f"%{search}%"))
             .distinct()
-        }
-        divisions = [d for d in divisions if d.id in matching_division_ids]
+        )
 
+    divisions = division_query.order_by(Division.name).all()
     # Single query for all match statuses — avoids N+1
     division_ids = [d.id for d in divisions]
     matches_by_division = defaultdict(list)
