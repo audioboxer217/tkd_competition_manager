@@ -1709,6 +1709,72 @@ class TestPageRoutes:
         assert resp.status_code == 200
         assert b"Completed" in resp.data
 
+    def test_results_page_has_search_bar(self, client):
+        resp = client.get("/results")
+        assert resp.status_code == 200
+        assert b"search-input" in resp.data
+        assert b"search-by" in resp.data
+
+    def test_ui_results_divisions_search_by_name_filters(self, client):
+        div_id_alice = _create_division(client, "Alpha Div", "kyorugi").get_json()["id"]
+        div_id_bob = _create_division(client, "Beta Div", "kyorugi").get_json()["id"]
+        _add_competitors(client, div_id_alice, ["Alice Smith"])
+        _add_competitors(client, div_id_bob, ["Bob Jones"])
+
+        resp = client.get("/ui/results_divisions?event_type=kyorugi&search=alice&search_by=name")
+        assert resp.status_code == 200
+        assert b"Alpha Div" in resp.data
+        assert b"Beta Div" not in resp.data
+
+    def test_ui_results_divisions_search_by_name_case_insensitive(self, client):
+        div_id = _create_division(client, "Case Div", "kyorugi").get_json()["id"]
+        _add_competitors(client, div_id, ["Charlie Brown"])
+
+        resp = client.get("/ui/results_divisions?event_type=kyorugi&search=CHARLIE&search_by=name")
+        assert resp.status_code == 200
+        assert b"Case Div" in resp.data
+
+    def test_ui_results_divisions_search_by_school_filters(self, client):
+        div_id1 = _create_division(client, "Tiger Div", "kyorugi").get_json()["id"]
+        div_id2 = _create_division(client, "Dragon Div", "kyorugi").get_json()["id"]
+        _add_competitors(client, div_id1, ["Alice, Tigers Academy"])
+        _add_competitors(client, div_id2, ["Bob, Dragon Dojo"])
+
+        resp = client.get("/ui/results_divisions?event_type=kyorugi&search=tigers&search_by=school")
+        assert resp.status_code == 200
+        assert b"Tiger Div" in resp.data
+        assert b"Dragon Div" not in resp.data
+
+    def test_ui_results_divisions_search_empty_returns_all(self, client):
+        div_id1 = _create_division(client, "Div One", "kyorugi").get_json()["id"]
+        div_id2 = _create_division(client, "Div Two", "kyorugi").get_json()["id"]
+        _add_competitors(client, div_id1, ["Alice"])
+        _add_competitors(client, div_id2, ["Bob"])
+
+        resp = client.get("/ui/results_divisions?event_type=kyorugi&search=")
+        assert resp.status_code == 200
+        assert b"Div One" in resp.data
+        assert b"Div Two" in resp.data
+
+    def test_ui_results_divisions_search_no_match_shows_empty(self, client):
+        div_id = _create_division(client, "Some Div", "kyorugi").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice"])
+
+        resp = client.get("/ui/results_divisions?event_type=kyorugi&search=zzznomatch&search_by=name")
+        assert resp.status_code == 200
+        assert b"No divisions found" in resp.data
+
+    def test_add_competitors_with_school_parses_correctly(self, client):
+        div_id = _create_division(client, "School Div", "kyorugi").get_json()["id"]
+        resp = _add_competitors(client, div_id, ["John Doe, Tigers Academy", "Jane Smith"])
+        assert resp.status_code == 200
+        from app import Competitor
+        comps = Competitor.query.filter_by(division_id=div_id).order_by(Competitor.position).all()
+        assert comps[0].name == "John Doe"
+        assert comps[0].school == "Tigers Academy"
+        assert comps[1].name == "Jane Smith"
+        assert comps[1].school is None
+
 
 # ---------------------------------------------------------------------------
 # Event types
