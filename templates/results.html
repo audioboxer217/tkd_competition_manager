@@ -176,8 +176,8 @@
 
     <div class="search-bar">
         <input type="text" id="search-input" placeholder="Search by competitor name…"
-               oninput="triggerSearch()" autocomplete="off" />
-        <button class="btn-clear" id="btn-clear" onclick="clearSearch()" type="button">Clear</button>
+               oninput="triggerSearch()" autocomplete="off" aria-label="Search competitors by name" />
+        <button class="btn-clear" id="btn-clear" onclick="clearSearch()" type="button" aria-label="Clear search" aria-controls="search-input">Clear</button>
     </div>
 
     <div id="divisions-container"
@@ -202,7 +202,7 @@
         }
 
         function triggerSearch() {
-            const search = document.getElementById('search-input').value;
+            const search = document.getElementById('search-input').value.trim();
             document.getElementById('btn-clear').style.display = search ? 'block' : 'none';
             clearTimeout(searchDebounceTimer);
             searchDebounceTimer = setTimeout(function () {
