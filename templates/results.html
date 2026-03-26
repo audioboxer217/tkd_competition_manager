@@ -126,17 +126,6 @@
             align-items: center;
         }
 
-        .search-bar select {
-            padding: 8px 10px;
-            border: 1px solid #cbd5e1;
-            border-radius: 6px;
-            font-size: 0.9rem;
-            background: white;
-            color: #0f172a;
-            cursor: pointer;
-            flex-shrink: 0;
-        }
-
         .search-bar input[type="text"] {
             flex: 1;
             padding: 8px 12px;
@@ -186,11 +175,7 @@
     </div>
 
     <div class="search-bar">
-        <select id="search-by" onchange="triggerSearch()">
-            <option value="name">Name</option>
-            <option value="school">School</option>
-        </select>
-        <input type="text" id="search-input" placeholder="Search competitors…"
+        <input type="text" id="search-input" placeholder="Search by competitor name…"
                oninput="triggerSearch()" autocomplete="off" />
         <button class="btn-clear" id="btn-clear" onclick="clearSearch()" type="button">Clear</button>
     </div>
@@ -209,10 +194,9 @@
 
         function buildResultsUrl(eventType) {
             const search = document.getElementById('search-input').value.trim();
-            const searchBy = document.getElementById('search-by').value;
             let url = '/ui/results_divisions?event_type=' + eventType;
             if (search) {
-                url += '&search=' + encodeURIComponent(search) + '&search_by=' + encodeURIComponent(searchBy);
+                url += '&search=' + encodeURIComponent(search);
             }
             return url;
         }

@@ -87,7 +87,6 @@ class Division(db.Model):
 class Competitor(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
-    school = db.Column(db.String(100), nullable=True, default=None)
     division_id = db.Column(db.Integer, db.ForeignKey("division.id"), nullable=False)
     position = db.Column(db.Integer, nullable=True, default=None)
 
@@ -694,21 +693,17 @@ def ui_results_divisions():
         return "Invalid event type.", 400
 
     search = request.args.get("search", "").strip()
-    search_by = request.args.get("search_by", "name")
-    if search_by not in ("name", "school"):
-        search_by = "name"
 
     divisions = Division.query.filter_by(event_type=event_type).order_by(Division.name).all()
 
     # When a search term is provided, keep only divisions that contain a
-    # competitor matching the search field (case-insensitive substring match).
+    # competitor whose name matches (case-insensitive substring match).
     if search:
-        search_field = Competitor.name if search_by == "name" else Competitor.school
         matching_division_ids = {
             comp.division_id
             for comp in Competitor.query.filter(
                 Competitor.division_id.in_([d.id for d in divisions]),
-                search_field.ilike(f"%{search}%"),
+                Competitor.name.ilike(f"%{search}%"),
             ).all()
         }
         divisions = [d for d in divisions if d.id in matching_division_ids]
@@ -828,22 +823,13 @@ def ui_add_competitors(div_id):
     names_text = request.form.get("names")
 
     if names_text:
-        # Split the text area by newlines and remove empty lines.
-        # Each line may optionally include a school name after a comma:
-        #   "John Doe, Tigers Academy"
-        raw_lines = [line.strip() for line in names_text.split("\n") if line.strip()]
+        # Split the text area by newlines and remove empty lines
+        name_list = [name.strip() for name in names_text.split("\n") if name.strip()]
 
         # Assign positions starting after the current maximum
         max_pos = db.session.query(db.func.max(Competitor.position)).filter_by(division_id=div_id).scalar() or 0
-        for i, line in enumerate(raw_lines):
-            if "," in line:
-                name, school = line.split(",", 1)
-                name = name.strip()
-                school = school.strip() or None
-            else:
-                name = line
-                school = None
-            comp = Competitor(name=name, school=school, division_id=div_id, position=max_pos + i + 1)
+        for i, name in enumerate(name_list):
+            comp = Competitor(name=name, division_id=div_id, position=max_pos + i + 1)
             db.session.add(comp)
 
         db.session.commit()
