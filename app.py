@@ -527,6 +527,7 @@ def schedule_view():
     # Sort by ring first; within each ring, use sequence when present.
     # For bracket items the sequence comes from the lowest match sequence in the division
     # (stored as min_sequence); for group items it comes from division.ring_sequence.
+    # When sequences are equal (or both absent), poomsae sorts before kyorugi.
     def _schedule_sort_key(item):
         division = item["division"]
         ring_name = division.ring.name.lower() if division.ring else ""
@@ -536,7 +537,8 @@ def schedule_view():
         else:
             sequence = division.ring_sequence
         has_sequence = sequence is not None
-        return (0 if has_ring else 1, ring_name, 0 if has_sequence else 1, sequence or 0, division.name.lower())
+        event_type_order = 0 if division.event_type == "poomsae" else 1
+        return (0 if has_ring else 1, ring_name, 0 if has_sequence else 1, sequence or 0, event_type_order, division.name.lower())
 
     division_data.sort(key=_schedule_sort_key)
 
