@@ -1530,6 +1530,49 @@ class TestPageRoutes:
         assert b'name="viewport"' in resp.data
         assert b'width=device-width' in resp.data
 
+    def test_admin_schedule_page_lists_divisions_with_matches(self, client):
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_id = _create_division(client, "Div A").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _generate_bracket(client, div_id)
+        client.patch(f"/ui/divisions/{div_id}/bracket_ring", data={"ring_id": str(ring_id)})
+
+        resp = client.get("/admin/schedule")
+        assert resp.status_code == 200
+        assert b"Match Schedule" in resp.data
+        assert b"Div A" in resp.data
+
+    def test_admin_schedule_ring_filter_no_ring(self, client):
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+
+        div_with_ring = _create_division(client, "Div With Ring").get_json()["id"]
+        _add_competitors(client, div_with_ring, ["A", "B"])
+        _generate_bracket(client, div_with_ring)
+        client.patch(f"/ui/divisions/{div_with_ring}/bracket_ring", data={"ring_id": str(ring_id)})
+
+        div_no_ring = _create_division(client, "Div No Ring").get_json()["id"]
+        _add_competitors(client, div_no_ring, ["C", "D"])
+        _generate_bracket(client, div_no_ring)
+
+        resp = client.get("/admin/schedule?ring_id=none")
+        assert resp.status_code == 200
+        assert b"Div No Ring" in resp.data
+        assert b"Div With Ring" not in resp.data
+
+    def test_admin_schedule_event_type_filter(self, client):
+        kyorugi_div_id = _create_division(client, "Kyorugi Div", event_type="kyorugi").get_json()["id"]
+        _add_competitors(client, kyorugi_div_id, ["A", "B"])
+        _generate_bracket(client, kyorugi_div_id)
+
+        poomsae_div_id = _create_division(client, "Poomsae Div", event_type="poomsae").get_json()["id"]
+        _add_competitors(client, poomsae_div_id, ["C", "D"])
+        _generate_bracket(client, poomsae_div_id)
+
+        resp = client.get("/admin/schedule?event_type=poomsae")
+        assert resp.status_code == 200
+        assert b"Poomsae Div" in resp.data
+        assert b"Kyorugi Div" not in resp.data
+
     def test_admin_division_setup(self, client):
         div_id = _create_division(client).get_json()["id"]
         resp = client.get(f"/admin/divisions/{div_id}/setup")
