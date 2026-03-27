@@ -1573,6 +1573,33 @@ class TestPageRoutes:
         assert b"Poomsae Div" in resp.data
         assert b"Kyorugi Div" not in resp.data
 
+    def test_admin_schedule_bracket_sorted_by_min_match_sequence(self, client):
+        """Bracket divisions should be sorted by their lowest scheduled match sequence."""
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+
+        # Create two bracket divisions and assign them to the same ring
+        div_a_id = _create_division(client, "Div A").get_json()["id"]
+        _add_competitors(client, div_a_id, ["A1", "A2"])
+        _generate_bracket(client, div_a_id)
+        client.patch(f"/ui/divisions/{div_a_id}/bracket_ring", data={"ring_id": str(ring_id)})
+
+        div_b_id = _create_division(client, "Div B").get_json()["id"]
+        _add_competitors(client, div_b_id, ["B1", "B2"])
+        _generate_bracket(client, div_b_id)
+        client.patch(f"/ui/divisions/{div_b_id}/bracket_ring", data={"ring_id": str(ring_id)})
+
+        # Schedule Div B's match at sequence 1 and Div A's match at sequence 2
+        match_a = Match.query.filter_by(division_id=div_a_id).first()
+        match_b = Match.query.filter_by(division_id=div_b_id).first()
+        client.put(f"/matches/{match_b.id}/schedule", data={"ring_sequence": "1"})
+        client.put(f"/matches/{match_a.id}/schedule", data={"ring_sequence": "2"})
+
+        resp = client.get("/admin/schedule")
+        assert resp.status_code == 200
+        html = resp.data.decode()
+        # Div B (sequence 1) should appear before Div A (sequence 2)
+        assert html.index("Div B") < html.index("Div A")
+
     def test_admin_division_setup(self, client):
         div_id = _create_division(client).get_json()["id"]
         resp = client.get(f"/admin/divisions/{div_id}/setup")

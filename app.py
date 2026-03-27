@@ -454,12 +454,24 @@ def schedule_view():
             grouped_rounds[match.round_name].append(match)
 
         sorted_rounds = dict(sorted(grouped_rounds.items(), key=lambda x: _round_sort_key(x[0]), reverse=True))
+
+        # Compute the lowest sequence number among scheduled matches so the division
+        # can be sorted correctly alongside group-based poomsae divisions.
+        division_matches = grouped_by_division[division]
+        sequences = [
+            m.match_number % 100
+            for m in division_matches
+            if m.match_number is not None and m.ring_id is not None
+        ]
+        min_sequence = min(sequences) if sequences else None
+
         division_data.append(
             {
                 "division": division,
                 "rounds": sorted_rounds,
                 "ring": division.ring,
                 "style": "bracket",
+                "min_sequence": min_sequence,
             }
         )
 
@@ -513,13 +525,18 @@ def schedule_view():
         )
 
     # Sort by ring first; within each ring, use sequence when present.
+    # For bracket items the sequence comes from the lowest match sequence in the division
+    # (stored as min_sequence); for group items it comes from division.ring_sequence.
     def _schedule_sort_key(item):
         division = item["division"]
         ring_name = division.ring.name.lower() if division.ring else ""
-        has_sequence = division.ring_sequence is not None
-        sequence = division.ring_sequence if has_sequence else 0
         has_ring = division.ring is not None
-        return (0 if has_ring else 1, ring_name, 0 if has_sequence else 1, sequence, division.name.lower())
+        if item.get("style") == "bracket":
+            sequence = item.get("min_sequence")
+        else:
+            sequence = division.ring_sequence
+        has_sequence = sequence is not None
+        return (0 if has_ring else 1, ring_name, 0 if has_sequence else 1, sequence or 0, division.name.lower())
 
     division_data.sort(key=_schedule_sort_key)
 
