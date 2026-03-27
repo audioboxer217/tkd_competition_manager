@@ -235,6 +235,18 @@
             font-style: italic;
         }
 
+        .error-message {
+            color: #dc2626;
+            font-weight: 600;
+            font-size: 0.85rem;
+        }
+
+        .schedule-form-row {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+
         .empty-state {
             text-align: center;
             color: #94a3b8;
@@ -310,40 +322,9 @@
         <div class="round-section">
             <div class="round-header">{{ round_name }}</div>
             {% for match in match_list %}
-            <div class="match-card" id="match-{{ match.id }}">
-                <div class="match-competitors">
-                    <div><span class="chung">Chung:</span> {{ match.competitor1.name if match.competitor1 else "TBD" }}
-                    </div>
-                    <div><span class="hong">Hong:</span> {{ match.competitor2.name if match.competitor2 else "TBD" }}
-                    </div>
-                </div>
-                <div class="schedule-cell">
-                    {% if match.status == "Pending" %}
-                    {% if division.ring_id %}
-                    <form hx-put="/matches/{{ match.id }}/schedule" hx-target="#match-{{ match.id }}"
-                        hx-swap="outerHTML" style="display: flex; gap: 6px; align-items: center;">
-                        <input type="number" name="ring_sequence"
-                            value="{{ match.match_number - (match.ring_id * 100) if match.match_number else '' }}"
-                            placeholder="Seq (e.g. 1)" required>
-                        <button type="submit" class="save-btn">Save</button>
-                    </form>
-                    {% if match.match_number %}
-                    <span class="status-label assigned">Match {{ match.match_number }}</span>
-                    {% endif %}
-                    {% else %}
-                    <span class="no-ring-note">Assign a ring to this division first</span>
-                    {% endif %}
-                    {% elif match.status == "In Progress" %}
-                    <span class="status-label in-progress">
-                        In Progress{% if match.match_number %} — Match {{ match.match_number }}{% endif %}
-                    </span>
-                    {% else %}
-                    <span class="status-label completed">
-                        {{ match.status }}{% if match.match_number %} — Match {{ match.match_number }}{% endif %}
-                    </span>
-                    {% endif %}
-                </div>
-            </div>
+            {% set ring_sequence_value = (match.match_number - match.ring_id * 100) if (match.match_number and match.ring_id) else '' %}
+            {% set error_message = None %}
+            {% include '_match_schedule_card.html' %}
             {% endfor %}
         </div>
         {% endfor %}

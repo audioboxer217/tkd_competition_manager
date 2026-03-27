@@ -1,29 +1,39 @@
 <div class="match-card" id="match-{{ match.id }}">
-    <div class="match-body">
-        <div>
-            <font style="color: #252ceb; font-weight: bold;">Chung</font>: {{ match.competitor1.name if
-            match.competitor1 else "TBD" }}
-        </div>
-        <div>
-            <font style="color: #eb2525; font-weight: bold;">Hong</font>: {{ match.competitor2.name if match.competitor2
-            else "TBD" }}
-        </div>
+    <div class="match-competitors">
+        <div><span class="chung">Chung:</span> {{ match.competitor1.name if match.competitor1 else "TBD" }}</div>
+        <div><span class="hong">Hong:</span> {{ match.competitor2.name if match.competitor2 else "TBD" }}</div>
     </div>
-
-    <div class="schedule-form">
+    <div class="schedule-cell">
         {% if error_message %}
-        <div style="margin-bottom: 8px; color: #dc2626; font-weight: bold;">
-            {{ error_message }}
-        </div>
-        {% else %}
-        <div style="margin-bottom: 8px; font-weight: bold; color: #2563eb;">
-            Scheduled: {{ scheduled_label }}
-        </div>
-        {% endif %}
-        <form hx-put="/matches/{{ match.id }}/schedule" hx-target="#match-{{ match.id }}" hx-swap="outerHTML"
-            style="display: flex; gap: 5px;">
-            <input type="number" name="ring_sequence" value="{{ ring_sequence_value }}" placeholder="Seq (e.g. 1)" required style="width: 100px;">
+        <span class="error-message">{{ error_message }}</span>
+        <form class="schedule-form-row" hx-put="/matches/{{ match.id }}/schedule" hx-target="#match-{{ match.id }}"
+            hx-swap="outerHTML">
+            <input type="number" name="ring_sequence" value="{{ ring_sequence_value }}" placeholder="Seq (e.g. 1)"
+                required>
             <button type="submit" class="save-btn">Save</button>
         </form>
+        {% elif match.status == "Pending" %}
+        {% if match.division.ring_id %}
+        <form class="schedule-form-row" hx-put="/matches/{{ match.id }}/schedule" hx-target="#match-{{ match.id }}"
+            hx-swap="outerHTML">
+            <input type="number" name="ring_sequence" value="{{ ring_sequence_value }}" placeholder="Seq (e.g. 1)"
+                required>
+            <button type="submit" class="save-btn">Save</button>
+        </form>
+        {% if match.match_number %}
+        <span class="status-label assigned">Match {{ match.match_number }}</span>
+        {% endif %}
+        {% else %}
+        <span class="no-ring-note">Assign a ring to this division first</span>
+        {% endif %}
+        {% elif match.status == "In Progress" %}
+        <span class="status-label in-progress">
+            In Progress{% if match.match_number %} — Match {{ match.match_number }}{% endif %}
+        </span>
+        {% else %}
+        <span class="status-label completed">
+            {{ match.status }}{% if match.match_number %} — Match {{ match.match_number }}{% endif %}
+        </span>
+        {% endif %}
     </div>
 </div>
