@@ -459,8 +459,61 @@ def schedule_view():
                 "division": division,
                 "rounds": sorted_rounds,
                 "ring": division.ring,
+                "style": "bracket",
             }
         )
+
+    # Fetch group-style poomsae divisions
+    group_query = (
+        Division.query.filter(Division.event_type == "poomsae", Division.poomsae_style == "group")
+        .options(
+            joinedload(Division.ring),
+            joinedload(Division.competitors),
+        )
+        .order_by(Division.name)
+    )
+
+    if event_type_filter and event_type_filter != "poomsae":
+        group_query = group_query.filter(False)  # Exclude group divisions if filtering for non-poomsae
+
+    if ring_filter == "none":
+        group_query = group_query.filter(Division.ring_id.is_(None))
+    elif ring_filter:
+        try:
+            ring_id = int(ring_filter)
+        except ValueError:
+            ring_id = None
+        if ring_id is not None:
+            group_query = group_query.filter(Division.ring_id == ring_id)
+
+    group_divisions = group_query.all()
+    for division in group_divisions:
+        # Get scores for this division
+        scores_by_comp = {s.competitor_id: s for s in Score.query.filter_by(division_id=division.id).all()}
+
+        # Sort: scored competitors first (highest score first), then unscored
+        scored_competitors = sorted(
+            [c for c in division.competitors if c.id in scores_by_comp],
+            key=lambda c: scores_by_comp[c.id].score_value,
+            reverse=True,
+        )
+        unscored_competitors = [c for c in division.competitors if c.id not in scores_by_comp]
+
+        competitor_scores = [
+            {"competitor": c, "score": scores_by_comp.get(c.id)} for c in scored_competitors + unscored_competitors
+        ]
+
+        division_data.append(
+            {
+                "division": division,
+                "competitors": competitor_scores,
+                "ring": division.ring,
+                "style": "group",
+            }
+        )
+
+    # Sort all divisions by name
+    division_data.sort(key=lambda d: d["division"].name)
 
     return render_template(
         "admin_schedule.html",

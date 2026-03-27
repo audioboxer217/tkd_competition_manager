@@ -278,24 +278,34 @@
     {% for item in division_data %}
     {% set division = item.division %}
     {% set ring = item.ring %}
+    {% set style = item.style %}
 
-    <div class="division-section{{ ' needs-scheduling' if not ring else '' }}">
+    <div class="division-section{{ ' needs-scheduling' if not ring else '' }}" id="division-{{ division.id }}">
         <div class="division-header{{ ' needs-scheduling' if not ring else '' }}">
             <span class="division-title">{{ division.name }}</span>
             <div class="division-meta">
                 <span class="badge {{ 'badge-kyorugi' if division.event_type == 'kyorugi' else 'badge-poomsae' }}">
                     {{ "Kyorugi" if division.event_type == "kyorugi" else "Poomsae" }}
                 </span>
+                {% if style == "group" %}
+                <span class="badge" style="background: #f3e8ff; color: #7c3aed;">Group</span>
+                {% endif %}
                 {% if ring %}
                 <span class="ring-label">Ring: <strong>{{ ring.name }}</strong></span>
                 {% else %}
                 <span class="ring-label" style="color: #b45309; font-weight: 600;">&#9888; No ring assigned</span>
                 {% endif %}
+                {% if style == "bracket" %}
                 <a href="/admin/divisions/{{ division.id }}/bracket_manage" class="manage-link">Manage Bracket
                     &rarr;</a>
+                {% else %}
+                <a href="/admin/divisions/{{ division.id }}/setup" class="manage-link">Setup
+                    &rarr;</a>
+                {% endif %}
             </div>
         </div>
 
+        {% if style == "bracket" %}
         {% for round_name, match_list in item.rounds.items() %}
         <div class="round-section">
             <div class="round-header">{{ round_name }}</div>
@@ -337,6 +347,53 @@
             {% endfor %}
         </div>
         {% endfor %}
+{% elif style == "group" %}
+<div class="round-section">
+    <div class="round-header">Competitors & Scores</div>
+    {% if not item.competitors %}
+    <div class="no-ring-note" style="padding: 10px;">No competitors added yet.</div>
+    {% else %}
+    <div style="padding: 0 12px 8px 12px;">
+        <div
+            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
+            <span style="font-size: 0.85rem; color: #475569;"><strong>{{ item.competitors|length }}</strong>
+                competitor(s)</span>
+            <div style="display: flex; gap: 6px;">
+                {% if division.event_status != 'Pending' %}
+                <button hx-patch="/ui/divisions/{{ division.id }}/event_status" hx-vals='{"event_status": "Pending"}'
+                    hx-on::after-request="location.reload();"
+                    style="background: #64748b; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 0.75rem; font-weight: 600;">
+                    Reset
+                </button>
+                {% endif %}
+            </div>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 8px;">
+            {% for item_comp in item.competitors %}
+            {% set competitor = item_comp.competitor %}
+            {% set score = item_comp.score %}
+            <div
+                style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px; font-size: 0.9rem;">
+                <div style="font-weight: 600; color: #0f172a; margin-bottom: 4px;">{{ competitor.name }}</div>
+                <div
+                    style="color: {% if score %}#0f172a{% else %}#94a3b8{% endif %}; font-weight: {% if score %}bold{% else %}normal{% endif %}; font-size: 0.95rem;">
+                    Score: {% if score %}{{ "%.3f"|format(score.score_value) }}{% else %}<span
+                        style="font-style: italic;">Not scored</span>{% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #e2e8f0;">
+            <span style="font-size: 0.85rem; color: #475569;">
+                Status: <strong
+                    style="{% if division.event_status == 'In Progress' %}color: #f59e0b;{% elif division.event_status == 'Completed' %}color: #10b981;{% else %}color: #64748b;{% endif %}">{{
+                    division.event_status }}</strong>
+            </span>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
     </div>
     {% endfor %}
 
