@@ -12,6 +12,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_wtf.csrf import CSRFProtect
 from markupsafe import escape
 from sqlalchemy import case
+from sqlalchemy.orm import joinedload
 from supabase import create_client
 from supabase_auth.errors import AuthApiError
 
@@ -83,6 +84,8 @@ class Division(db.Model):
     competitors = db.relationship("Competitor", backref="division", lazy=True)
     matches = db.relationship("Match", backref="division", lazy=True)
 
+    __table_args__ = (db.Index("ix_division_ring_id", "ring_id"),)
+
 
 class Competitor(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -116,6 +119,12 @@ class Match(db.Model):
     competitor1 = db.relationship("Competitor", foreign_keys=[competitor1_id])
     competitor2 = db.relationship("Competitor", foreign_keys=[competitor2_id])
     winner = db.relationship("Competitor", foreign_keys=[winner_id])
+
+    __table_args__ = (
+        db.Index("ix_match_division_id", "division_id"),
+        db.Index("ix_match_status", "status"),
+        db.Index("ix_match_division_status", "division_id", "status"),
+    )
 
 
 class Score(db.Model):
@@ -401,6 +410,65 @@ def index():
 @login_required
 def admin_view():
     return render_template("admin.html")
+
+
+@app.route("/admin/schedule")
+@login_required
+def schedule_view():
+    ring_filter = request.args.get("ring_id", "")
+    event_type_filter = request.args.get("event_type", "")
+    if event_type_filter not in ("", *VALID_EVENT_TYPES):
+        event_type_filter = ""
+    rings = Ring.query.order_by(Ring.name).all()
+
+    # Fetch everything needed in one query to avoid per-division DB round trips.
+    match_query = Match.query.options(
+        joinedload(Match.division).joinedload(Division.ring),
+        joinedload(Match.competitor1),
+        joinedload(Match.competitor2),
+    ).filter(Match.status != "Completed (Bye)")
+
+    if event_type_filter:
+        match_query = match_query.filter(Match.division.has(Division.event_type == event_type_filter))
+
+    if ring_filter == "none":
+        match_query = match_query.filter(Match.division.has(Division.ring_id.is_(None)))
+    elif ring_filter:
+        try:
+            ring_id = int(ring_filter)
+        except ValueError:
+            ring_id = None
+        if ring_id is not None:
+            match_query = match_query.filter(Match.division.has(Division.ring_id == ring_id))
+
+    matches = match_query.order_by(Match.division_id, Match.id).all()
+
+    grouped_by_division = defaultdict(list)
+    for match in matches:
+        grouped_by_division[match.division].append(match)
+
+    division_data = []
+    for division in sorted(grouped_by_division.keys(), key=lambda d: d.name):
+        grouped_rounds = defaultdict(list)
+        for match in grouped_by_division[division]:
+            grouped_rounds[match.round_name].append(match)
+
+        sorted_rounds = dict(sorted(grouped_rounds.items(), key=lambda x: _round_sort_key(x[0]), reverse=True))
+        division_data.append(
+            {
+                "division": division,
+                "rounds": sorted_rounds,
+                "ring": division.ring,
+            }
+        )
+
+    return render_template(
+        "admin_schedule.html",
+        division_data=division_data,
+        rings=rings,
+        ring_filter=ring_filter,
+        event_type_filter=event_type_filter,
+    )
 
 
 @app.route("/results")
