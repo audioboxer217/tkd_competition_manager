@@ -6,7 +6,7 @@ For users managing tournament setup, bracket generation, and live operations.
 
 ## 1) Login and access
 
-1. Go to `/admin` or click **Admin Login** on the top-right of the main page.
+1. Go to `/admin` or click **Admin Console** on the top-right of the main page.
 2. Sign in with your credentials.
 3. After a successful login you are redirected to the **Admin Dashboard** (`/admin`).
 

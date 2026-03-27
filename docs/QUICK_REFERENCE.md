@@ -7,7 +7,7 @@ One-page checklists for all roles during a live tournament.
 ## Administrator
 
 ### Pre-competition setup
-- [ ] Click **Admin Login** button in top-right and login → redirected to **Admin Dashboard** (`/admin`)
+- [ ] Click **Admin Console** button in top-right and login → redirected to **Admin Dashboard** (`/admin`)
 - [ ] Create rings (**Manage Rings** panel → **Add Ring**)
 - [ ] Create Kyorugi divisions (**Kyorugi** tab → **Add Division**)
 - [ ] Create Poomsae/Breaking divisions (**Poomsae/Breaking** tab → **Add Division**)

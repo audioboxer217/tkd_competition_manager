@@ -5,7 +5,7 @@ For scorekeepers and ring operators running live competition at an assigned ring
 ---
 
 ## 1) Login and Open your scorekeeper screen
-- Go to /admin or click **Admin Login** on the top-right of the main page.
+- Go to /admin or click **Admin Console** on the top-right of the main page.
 - Sign in with your credentials.
 - After a successful login you are redirected to the Admin Dashboard (/admin).
 - Click the **Score Keeper** button for your Ring
