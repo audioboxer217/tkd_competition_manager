@@ -74,10 +74,61 @@
             line-height: 1.5;
         }
 
+        .match-competitors {
+            padding: 12px;
+            border-bottom: 1px solid #e2e8f0;
+            font-size: 0.95rem;
+            line-height: 1.5;
+        }
+
+        .chung {
+            color: #252ceb;
+            font-weight: bold;
+        }
+
+        .hong {
+            color: #eb2525;
+            font-weight: bold;
+        }
+
         /* Scheduling Section */
         .schedule-form {
             background: #f8fafc;
             padding: 12px;
+        }
+
+        .schedule-cell {
+            background: #f8fafc;
+            padding: 12px;
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .status-label {
+            font-size: 0.85rem;
+            color: #475569;
+        }
+
+        .status-label.assigned {
+            color: #059669;
+            font-weight: 600;
+        }
+
+        .status-label.in-progress {
+            color: #d97706;
+            font-weight: 600;
+        }
+
+        .status-label.completed {
+            color: #64748b;
+        }
+
+        .no-ring-note {
+            font-size: 0.8rem;
+            color: #94a3b8;
+            font-style: italic;
         }
 
         select,
@@ -100,6 +151,18 @@
 
         .save-btn:hover {
             background: #1d4ed8;
+        }
+
+        .error-message {
+            color: #dc2626;
+            font-weight: 600;
+            font-size: 0.85rem;
+        }
+
+        .schedule-form-row {
+            display: flex;
+            gap: 6px;
+            align-items: center;
         }
 
         a.back-link {

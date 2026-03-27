@@ -1115,7 +1115,6 @@ def schedule_match_htmx(match_id):
                 "_match_schedule_card.html",
                 match=match,
                 ring_sequence_value=ring_sequence_int,
-                scheduled_label=(f"Match {match.match_number}" if match.match_number else "Unassigned"),
                 error_message="Error: No ring assigned to this bracket. Set the ring at the top of the page.",
             )
 
@@ -1153,7 +1152,6 @@ def schedule_match_htmx(match_id):
                 "_match_schedule_card.html",
                 match=match,
                 ring_sequence_value=ring_sequence_int,
-                scheduled_label=(f"Match {match.match_number}" if match.match_number else "Unassigned"),
                 error_message=(f'Error: Sequence {ring_sequence_int} is already used by "{conflict_name}" in this ring.'),
             )
         match.ring_id = division_ring_id
@@ -1164,7 +1162,6 @@ def schedule_match_htmx(match_id):
         "_match_schedule_card.html",
         match=match,
         ring_sequence_value=(match.match_number - match.ring_id * 100 if match.match_number and match.ring_id else ""),
-        scheduled_label=(f"Match {match.match_number}" if match.match_number else "Unassigned"),
         error_message=None,
     )
 
