@@ -512,8 +512,16 @@ def schedule_view():
             }
         )
 
-    # Sort all divisions by name
-    division_data.sort(key=lambda d: d["division"].name)
+    # Sort by ring first; within each ring, use sequence when present.
+    def _schedule_sort_key(item):
+        division = item["division"]
+        ring_name = division.ring.name.lower() if division.ring else ""
+        has_sequence = division.ring_sequence is not None
+        sequence = division.ring_sequence if has_sequence else 0
+        has_ring = division.ring is not None
+        return (0 if has_ring else 1, ring_name, 0 if has_sequence else 1, sequence, division.name.lower())
+
+    division_data.sort(key=_schedule_sort_key)
 
     return render_template(
         "admin_schedule.html",

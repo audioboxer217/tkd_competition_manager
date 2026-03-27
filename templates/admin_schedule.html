@@ -349,7 +349,7 @@
         {% endfor %}
 {% elif style == "group" %}
 <div class="round-section">
-    <div class="round-header">Competitors & Scores</div>
+    <div class="round-header">Competitors</div>
     {% if not item.competitors %}
     <div class="no-ring-note" style="padding: 10px;">No competitors added yet.</div>
     {% else %}
@@ -358,10 +358,28 @@
             style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
             <span style="font-size: 0.85rem; color: #475569;"><strong>{{ item.competitors|length }}</strong>
                 competitor(s)</span>
-            <div style="display: flex; gap: 6px;">
+            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                {% if division.ring_id %}
+                <form hx-patch="/ui/divisions/{{ division.id }}/ring_assignment"
+                    hx-on::after-request="if(event.detail.successful){ location.reload(); }"
+                    style="display: flex; gap: 6px; align-items: center;">
+                    <input type="hidden" name="ring_id" value="{{ division.ring_id }}">
+                    <input type="hidden" name="event_status" value="{{ division.event_status }}">
+                    <input type="number" name="ring_sequence" min="1" max="99"
+                        value="{{ division.ring_sequence if division.ring_sequence is not none else '' }}" placeholder="Seq"
+                        required
+                        style="width: 82px; padding: 4px 6px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 0.8rem;">
+                    <button type="submit"
+                        style="background: #2563eb; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 0.75rem; font-weight: 600; white-space: nowrap;">
+                        Save Seq
+                    </button>
+                </form>
+                {% else %}
+                <span class="no-ring-note">Assign ring in Setup first</span>
+                {% endif %}
                 {% if division.event_status != 'Pending' %}
                 <button hx-patch="/ui/divisions/{{ division.id }}/event_status" hx-vals='{"event_status": "Pending"}'
-                    hx-on::after-request="location.reload();"
+                    hx-on::after-request="if(event.detail.successful){ location.reload(); }"
                     style="background: #64748b; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 0.75rem; font-weight: 600;">
                     Reset
                 </button>
@@ -371,15 +389,9 @@
         <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 8px;">
             {% for item_comp in item.competitors %}
             {% set competitor = item_comp.competitor %}
-            {% set score = item_comp.score %}
             <div
                 style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px; font-size: 0.9rem;">
                 <div style="font-weight: 600; color: #0f172a; margin-bottom: 4px;">{{ competitor.name }}</div>
-                <div
-                    style="color: {% if score %}#0f172a{% else %}#94a3b8{% endif %}; font-weight: {% if score %}bold{% else %}normal{% endif %}; font-size: 0.95rem;">
-                    Score: {% if score %}{{ "%.3f"|format(score.score_value) }}{% else %}<span
-                        style="font-style: italic;">Not scored</span>{% endif %}
-                </div>
             </div>
             {% endfor %}
         </div>
