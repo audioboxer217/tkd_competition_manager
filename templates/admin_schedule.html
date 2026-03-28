@@ -253,6 +253,72 @@
             padding: 40px;
             font-size: 1rem;
         }
+
+        @media print {
+            @page {
+                size: portrait;
+                margin: 0.5in;
+            }
+
+            body {
+                background: #fff !important;
+                padding: 0 !important;
+                font-size: 10pt;
+                color: #000;
+            }
+
+            h1 {
+                margin: 0 0 10pt 0;
+                color: #000;
+                font-size: 16pt;
+            }
+
+            .top-bar,
+            a.back-link,
+            a.manage-link,
+            .schedule-form-row,
+            .save-btn,
+            .schedule-cell input[type="number"],
+            .htmx-confirm-modal {
+                display: none !important;
+            }
+
+            .division-section {
+                box-shadow: none !important;
+                border: 1px solid #999 !important;
+                border-radius: 0 !important;
+                margin: 0 0 10pt 0 !important;
+                max-width: 100% !important;
+                break-inside: avoid;
+                page-break-inside: avoid;
+            }
+
+            .division-header {
+                background: #f2f2f2 !important;
+                border-bottom: 1px solid #999;
+            }
+
+            .round-section {
+                break-inside: avoid;
+                page-break-inside: avoid;
+            }
+
+            .match-card {
+                background: #fff !important;
+                border: 1px solid #ccc !important;
+                break-inside: avoid;
+                page-break-inside: avoid;
+            }
+
+            .status-label,
+            .ring-label,
+            .division-title,
+            .round-header,
+            .chung,
+            .hong {
+                color: #000 !important;
+            }
+        }
     </style>
 </head>
 
@@ -281,6 +347,8 @@
                 <option value="none" {% if ring_filter=="none" %}selected{% endif %}>No Ring</option>
             </select>
         </form>
+        <button onclick="window.print()"
+            style="background: #2563eb; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 0.9rem; font-weight: 600; white-space: nowrap;">Print</button>
     </div>
 
     {% if not division_data %}
