@@ -378,9 +378,9 @@
                     <span style="font-size: 0.85rem; color: #475569;"><strong>{{ item.competitors|length }}</strong> competitor(s)</span>
                 </div>
                 <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 8px;">
-                    {% for competitor in item.competitors %}
+                    {% for item_comp in item.competitors %}
                     <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px; font-size: 0.9rem;">
-                        <div style="font-weight: 600; color: #0f172a;">{{ competitor.name }}</div>
+                        <div style="font-weight: 600; color: #0f172a;">{{ item_comp.competitor.name }}</div>
                     </div>
                     {% endfor %}
                 </div>
