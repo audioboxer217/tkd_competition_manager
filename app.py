@@ -412,159 +412,22 @@ def admin_view():
     return render_template("admin.html")
 
 
-@app.route("/admin/schedule")
-@login_required
-def schedule_view():
-    ring_filter = request.args.get("ring_id", "")
-    event_type_filter = request.args.get("event_type", "")
-    if event_type_filter not in ("", *VALID_EVENT_TYPES):
-        event_type_filter = ""
-    rings = Ring.query.order_by(Ring.name).all()
+def _build_schedule_division_data(ring_filter, event_type_filter, search=""):
+    """Build and return sorted schedule division data shared by admin and public schedule views.
 
-    # Fetch everything needed in one query to avoid per-division DB round trips.
-    match_query = Match.query.options(
-        joinedload(Match.division).joinedload(Division.ring),
-        joinedload(Match.competitor1),
-        joinedload(Match.competitor2),
-    ).filter(Match.status != "Completed (Bye)")
+    ``search`` (optional) narrows results to divisions containing a competitor
+    whose name matches the substring.  For bracket divisions the filter is pushed
+    down to the DB query; for group divisions the DB query restricts to divisions
+    that have at least one matching competitor, and the competitor list for each
+    division is then filtered in Python to show only matching entries.
 
-    if event_type_filter:
-        match_query = match_query.filter(Match.division.has(Division.event_type == event_type_filter))
-
-    if ring_filter == "none":
-        match_query = match_query.filter(Match.division.has(Division.ring_id.is_(None)))
-    elif ring_filter:
-        try:
-            ring_id = int(ring_filter)
-        except ValueError:
-            ring_id = None
-        if ring_id is not None:
-            match_query = match_query.filter(Match.division.has(Division.ring_id == ring_id))
-
-    matches = match_query.order_by(Match.division_id, Match.id).all()
-
-    grouped_by_division = defaultdict(list)
-    for match in matches:
-        grouped_by_division[match.division].append(match)
-
-    division_data = []
-    for division in sorted(grouped_by_division.keys(), key=lambda d: d.name):
-        grouped_rounds = defaultdict(list)
-        for match in grouped_by_division[division]:
-            grouped_rounds[match.round_name].append(match)
-
-        sorted_rounds = dict(sorted(grouped_rounds.items(), key=lambda x: _round_sort_key(x[0]), reverse=True))
-
-        # Compute the lowest sequence number among scheduled matches so the division
-        # can be sorted correctly alongside group-based poomsae divisions.
-        division_matches = grouped_by_division[division]
-        sequences = [
-            m.match_number % 100
-            for m in division_matches
-            if m.match_number is not None and m.ring_id is not None
-        ]
-        min_sequence = min(sequences) if sequences else None
-
-        division_data.append(
-            {
-                "division": division,
-                "rounds": sorted_rounds,
-                "ring": division.ring,
-                "style": "bracket",
-                "min_sequence": min_sequence,
-            }
-        )
-
-    # Fetch group-style poomsae divisions
-    group_query = (
-        Division.query.filter(Division.event_type == "poomsae", Division.poomsae_style == "group")
-        .options(
-            joinedload(Division.ring),
-            joinedload(Division.competitors),
-        )
-        .order_by(Division.name)
-    )
-
-    if event_type_filter and event_type_filter != "poomsae":
-        group_query = group_query.filter(False)  # Exclude group divisions if filtering for non-poomsae
-
-    if ring_filter == "none":
-        group_query = group_query.filter(Division.ring_id.is_(None))
-    elif ring_filter:
-        try:
-            ring_id = int(ring_filter)
-        except ValueError:
-            ring_id = None
-        if ring_id is not None:
-            group_query = group_query.filter(Division.ring_id == ring_id)
-
-    group_divisions = group_query.all()
-    for division in group_divisions:
-        # Get scores for this division
-        scores_by_comp = {s.competitor_id: s for s in Score.query.filter_by(division_id=division.id).all()}
-
-        # Sort: scored competitors first (highest score first), then unscored
-        scored_competitors = sorted(
-            [c for c in division.competitors if c.id in scores_by_comp],
-            key=lambda c: scores_by_comp[c.id].score_value,
-            reverse=True,
-        )
-        unscored_competitors = [c for c in division.competitors if c.id not in scores_by_comp]
-
-        competitor_scores = [
-            {"competitor": c, "score": scores_by_comp.get(c.id)} for c in scored_competitors + unscored_competitors
-        ]
-
-        division_data.append(
-            {
-                "division": division,
-                "competitors": competitor_scores,
-                "ring": division.ring,
-                "style": "group",
-            }
-        )
-
-    # Sort by ring first; within each ring, poomsae comes before kyorugi.
-    # Within each event type, sort by sequence when present.
-    # For bracket items the sequence comes from the lowest match sequence in the division
-    # (stored as min_sequence); for group items it comes from division.ring_sequence.
-    def _schedule_sort_key(item):
-        division = item["division"]
-        ring_name = division.ring.name.lower() if division.ring else ""
-        has_ring = division.ring is not None
-        if item.get("style") == "bracket":
-            sequence = item.get("min_sequence")
-        else:
-            sequence = division.ring_sequence
-        has_sequence = sequence is not None
-        event_type_order = 0 if division.event_type == "poomsae" else 1
-        return (0 if has_ring else 1, ring_name, event_type_order, 0 if has_sequence else 1, sequence or 0, division.name.lower())
-
-    division_data.sort(key=_schedule_sort_key)
-
-    return render_template(
-        "admin_schedule.html",
-        division_data=division_data,
-        rings=rings,
-        ring_filter=ring_filter,
-        event_type_filter=event_type_filter,
-    )
-
-
-@app.route("/results")
-def results_view():
-    return render_template("results.html")
-
-
-@app.route("/schedule")
-def public_schedule_view():
-    ring_filter = request.args.get("ring_id", "")
-    event_type_filter = request.args.get("event_type", "")
-    search = request.args.get("search", "").strip()
-    if event_type_filter not in ("", *VALID_EVENT_TYPES):
-        event_type_filter = ""
-    rings = Ring.query.order_by(Ring.name).all()
-
+    Each entry in the returned list is a dict with keys:
+      ``division``, ``ring``, ``style`` (``"bracket"`` or ``"group"``),
+      and either ``rounds`` + ``min_sequence`` (bracket) or ``competitors`` (group).
+    ``competitors`` is always a list of ``{"competitor": <Competitor>, "score": <Score|None>}``
+    dicts (score may be ``None`` when not relevant).
+    """
+    # --- bracket divisions ---
     match_query = Match.query.options(
         joinedload(Match.division).joinedload(Division.ring),
         joinedload(Match.competitor1),
@@ -604,6 +467,8 @@ def public_schedule_view():
 
         sorted_rounds = dict(sorted(grouped_rounds.items(), key=lambda x: _round_sort_key(x[0]), reverse=True))
 
+        # Compute the lowest sequence number among scheduled matches so the division
+        # can be sorted correctly alongside group-based poomsae divisions.
         division_matches = grouped_by_division[division]
         sequences = [
             m.match_number % 100
@@ -622,6 +487,7 @@ def public_schedule_view():
             }
         )
 
+    # --- group-style poomsae divisions ---
     group_query = (
         Division.query.filter(Division.event_type == "poomsae", Division.poomsae_style == "group")
         .options(
@@ -632,7 +498,7 @@ def public_schedule_view():
     )
 
     if event_type_filter and event_type_filter != "poomsae":
-        group_query = group_query.filter(False)
+        group_query = group_query.filter(False)  # Exclude group divisions if filtering for non-poomsae
 
     if ring_filter == "none":
         group_query = group_query.filter(Division.ring_id.is_(None))
@@ -644,23 +510,47 @@ def public_schedule_view():
         if ring_id is not None:
             group_query = group_query.filter(Division.ring_id == ring_id)
 
+    if search:
+        # Restrict to divisions that have at least one matching competitor.
+        group_query = group_query.filter(
+            Division.competitors.any(Competitor.name.ilike(f"%{search}%"))
+        )
+
     group_divisions = group_query.all()
     for division in group_divisions:
-        competitors = division.competitors
+        # Get scores for this division
+        scores_by_comp = {s.competitor_id: s for s in Score.query.filter_by(division_id=division.id).all()}
+
+        # Sort: scored competitors first (highest score first), then unscored
+        all_competitors = division.competitors
         if search:
-            competitors = [c for c in competitors if search.lower() in c.name.lower()]
-            if not competitors:
-                continue
+            # Only show competitors that match the search term.
+            all_competitors = [c for c in all_competitors if search.lower() in c.name.lower()]
+
+        scored_competitors = sorted(
+            [c for c in all_competitors if c.id in scores_by_comp],
+            key=lambda c: scores_by_comp[c.id].score_value,
+            reverse=True,
+        )
+        unscored_competitors = [c for c in all_competitors if c.id not in scores_by_comp]
+
+        competitor_scores = [
+            {"competitor": c, "score": scores_by_comp.get(c.id)} for c in scored_competitors + unscored_competitors
+        ]
 
         division_data.append(
             {
                 "division": division,
-                "competitors": competitors,
+                "competitors": competitor_scores,
                 "ring": division.ring,
                 "style": "group",
             }
         )
 
+    # Sort by ring first; within each ring, poomsae comes before kyorugi.
+    # Within each event type, sort by sequence when present.
+    # For bracket items the sequence comes from the lowest match sequence in the division
+    # (stored as min_sequence); for group items it comes from division.ring_sequence.
     def _schedule_sort_key(item):
         division = item["division"]
         ring_name = division.ring.name.lower() if division.ring else ""
@@ -674,6 +564,42 @@ def public_schedule_view():
         return (0 if has_ring else 1, ring_name, event_type_order, 0 if has_sequence else 1, sequence or 0, division.name.lower())
 
     division_data.sort(key=_schedule_sort_key)
+    return division_data
+
+
+@app.route("/admin/schedule")
+@login_required
+def schedule_view():
+    ring_filter = request.args.get("ring_id", "")
+    event_type_filter = request.args.get("event_type", "")
+    if event_type_filter not in ("", *VALID_EVENT_TYPES):
+        event_type_filter = ""
+    rings = Ring.query.order_by(Ring.name).all()
+    division_data = _build_schedule_division_data(ring_filter, event_type_filter)
+
+    return render_template(
+        "admin_schedule.html",
+        division_data=division_data,
+        rings=rings,
+        ring_filter=ring_filter,
+        event_type_filter=event_type_filter,
+    )
+
+
+@app.route("/results")
+def results_view():
+    return render_template("results.html")
+
+
+@app.route("/schedule")
+def public_schedule_view():
+    ring_filter = request.args.get("ring_id", "")
+    event_type_filter = request.args.get("event_type", "")
+    search = request.args.get("search", "").strip()
+    if event_type_filter not in ("", *VALID_EVENT_TYPES):
+        event_type_filter = ""
+    rings = Ring.query.order_by(Ring.name).all()
+    division_data = _build_schedule_division_data(ring_filter, event_type_filter, search)
 
     return render_template(
         "public_schedule.html",
