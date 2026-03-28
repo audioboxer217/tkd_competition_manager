@@ -1601,23 +1601,29 @@ class TestPageRoutes:
         assert html.index("Div B") < html.index("Div A")
 
     def test_admin_schedule_poomsae_before_kyorugi(self, client):
-        """Poomsae divisions should appear before kyorugi when viewing all events."""
+        """All poomsae divisions should appear before all kyorugi, regardless of sequence."""
         ring_id = _create_ring(client, "Ring 1").get_json()["id"]
 
+        # Kyorugi at sequence 1
         kyorugi_id = _create_division(client, "Kyorugi Div", event_type="kyorugi").get_json()["id"]
         _add_competitors(client, kyorugi_id, ["A", "B"])
         _generate_bracket(client, kyorugi_id)
         client.patch(f"/ui/divisions/{kyorugi_id}/bracket_ring", data={"ring_id": str(ring_id)})
+        kyorugi_match = Match.query.filter_by(division_id=kyorugi_id).first()
+        client.put(f"/matches/{kyorugi_match.id}/schedule", data={"ring_sequence": "1"})
 
+        # Poomsae at sequence 2 (higher than kyorugi — but still must come first)
         poomsae_id = _create_division(client, "Poomsae Div", event_type="poomsae").get_json()["id"]
         _add_competitors(client, poomsae_id, ["C", "D"])
         _generate_bracket(client, poomsae_id)
         client.patch(f"/ui/divisions/{poomsae_id}/bracket_ring", data={"ring_id": str(ring_id)})
+        poomsae_match = Match.query.filter_by(division_id=poomsae_id).first()
+        client.put(f"/matches/{poomsae_match.id}/schedule", data={"ring_sequence": "2"})
 
         resp = client.get("/admin/schedule")
         assert resp.status_code == 200
         html = resp.data.decode()
-        # Poomsae Div should appear before Kyorugi Div
+        # Poomsae Div (seq 2) should still appear before Kyorugi Div (seq 1)
         assert html.index("Poomsae Div") < html.index("Kyorugi Div")
 
     def test_admin_division_setup(self, client):
