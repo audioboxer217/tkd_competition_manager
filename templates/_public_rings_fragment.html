@@ -39,6 +39,37 @@
         </span>
     </div>
     {% endfor %}
+    {% if ring.poomsae_last_completed %}
+    {% if ring.poomsae_last_completed.kind == 'match' %}
+    {% set lc = ring.poomsae_last_completed.obj %}
+    <strong>{{ lc.match_number }}</strong> - <a
+        href="/ui/divisions/{{ lc.division.id }}/bracket">{{ lc.division.name }}</a>
+    ({{ lc.round_short }})
+    <div class="match-item match-item-completed">
+        <div>
+            <div>
+                <font style="color: #252ceb; font-weight: bold;">{{ lc.comp_1 }}</font> <span
+                    class="result-indicator {% if lc.comp_1_result == 'W' %}result-win{% elif lc.comp_1_result == 'L' %}result-loss{% else %}result-neutral{% endif %}">{{
+                    lc.comp_1_result }}</span>
+            </div>
+            <div>
+                <font style="color: #eb2525; font-weight: bold;">{{ lc.comp_2 }}</font> <span
+                    class="result-indicator {% if lc.comp_2_result == 'W' %}result-win{% elif lc.comp_2_result == 'L' %}result-loss{% else %}result-neutral{% endif %}">{{
+                    lc.comp_2_result }}</span>
+            </div>
+        </div>
+        <span class="status-completed">{{ lc.status }}</span>
+    </div>
+    {% else %}
+    {% set lc_div = ring.poomsae_last_completed.obj %}
+    <a href="/admin/divisions/{{ lc_div.id }}/group_results" style="text-decoration: none; color: inherit;">
+        <div class="match-item match-item-completed" style="cursor: pointer;">
+            <span style="font-weight: 600;">{{ lc_div.name }}</span>
+            <span class="status-completed">{{ lc_div.event_status }}</span>
+        </div>
+    </a>
+    {% endif %}
+    {% endif %}
     {% for item in ring.poomsae_items %}
     {% if item.kind == 'match' %}
     {% set match = item.obj %}
