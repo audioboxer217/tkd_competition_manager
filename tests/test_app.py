@@ -3033,6 +3033,73 @@ class TestPoomsaePublicRings:
         assert resp.status_code == 200
         assert f"/admin/divisions/{div_id}/group_results".encode() in resp.data
 
+    def test_poomsae_live_view_limits_pending_group_divisions_to_three(self, client):
+        """Only the first 3 Pending group divisions (by sequence) appear in the live view."""
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_ids = []
+        for i in range(5):
+            d = _create_division(client, f"Poomsae Div {i + 1}", "poomsae").get_json()["id"]
+            div_ids.append(d)
+            client.patch(
+                f"/ui/divisions/{d}/ring_assignment",
+                data={"ring_id": str(ring_id), "event_status": "Pending", "ring_sequence": str(i + 1)},
+            )
+
+        resp = client.get("/ui/public_rings?event_type=poomsae")
+        assert resp.status_code == 200
+        body = resp.data.decode()
+        # First 3 should appear, last 2 should not
+        assert "Poomsae Div 1" in body
+        assert "Poomsae Div 2" in body
+        assert "Poomsae Div 3" in body
+        assert "Poomsae Div 4" not in body
+        assert "Poomsae Div 5" not in body
+
+    def test_poomsae_live_view_shows_in_progress_plus_three_pending(self, client):
+        """An In Progress division counts as the 1 in-progress slot; only 3 Pending remain."""
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_ids = []
+        for i in range(5):
+            d = _create_division(client, f"Poomsae Div {i + 1}", "poomsae").get_json()["id"]
+            div_ids.append(d)
+            status = "In Progress" if i == 0 else "Pending"
+            client.patch(
+                f"/ui/divisions/{d}/ring_assignment",
+                data={"ring_id": str(ring_id), "event_status": status, "ring_sequence": str(i + 1)},
+            )
+
+        resp = client.get("/ui/public_rings?event_type=poomsae")
+        assert resp.status_code == 200
+        body = resp.data.decode()
+        # In Progress + 3 Pending
+        assert "Poomsae Div 1" in body
+        assert "Poomsae Div 2" in body
+        assert "Poomsae Div 3" in body
+        assert "Poomsae Div 4" in body
+        assert "Poomsae Div 5" not in body
+
+    def test_poomsae_live_view_shows_last_completed_group_division(self, client):
+        """The most recently completed group division appears as the last-completed item."""
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        comp_div = _create_division(client, "Completed Poomsae", "poomsae").get_json()["id"]
+        pend_div = _create_division(client, "Pending Poomsae", "poomsae").get_json()["id"]
+
+        client.patch(
+            f"/ui/divisions/{comp_div}/ring_assignment",
+            data={"ring_id": str(ring_id), "event_status": "Completed", "ring_sequence": "1"},
+        )
+        client.patch(
+            f"/ui/divisions/{pend_div}/ring_assignment",
+            data={"ring_id": str(ring_id), "event_status": "Pending", "ring_sequence": "2"},
+        )
+
+        resp = client.get("/ui/public_rings?event_type=poomsae")
+        assert resp.status_code == 200
+        body = resp.data.decode()
+        assert "Completed Poomsae" in body
+        assert "status-completed" in body
+        assert "Pending Poomsae" in body
+
 
 class TestPoomsaeScorekeeperDivisions:
     """Tests for the poomsae divisions section in the scorekeeper."""
@@ -3770,13 +3837,16 @@ class TestCompletedGroupDivisionVisibility:
         html = resp.data.decode()
         assert "Will Complete" not in html
 
-    def test_completed_group_hidden_from_live_view(self, client):
+    def test_completed_group_shown_as_last_completed_in_live_view(self, client):
+        """The most recently completed group division is shown as the last-completed event."""
         ring_id = _create_ring(client, "Ring 1").get_json()["id"]
         self._setup_group_division(client, ring_id, "Finished Group", seq=1, status="Completed")
 
         resp = client.get("/ui/public_rings?event_type=poomsae")
         assert resp.status_code == 200
-        assert b"Finished Group" not in resp.data
+        body = resp.data.decode()
+        assert "Finished Group" in body
+        assert "status-completed" in body
 
     def test_non_completed_group_shown_in_live_view(self, client):
         ring_id = _create_ring(client, "Ring 1").get_json()["id"]

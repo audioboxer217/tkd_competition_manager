@@ -790,6 +790,33 @@ def ui_public_rings():
         # For poomsae tab: merge bracket matches and group divisions into a single
         # interleaved list sorted by their common ring sequence number.
         if event_type == "poomsae":
+            # Find the most recently completed group/unconfigured poomsae division for this ring.
+            last_completed_group_div = (
+                Division.query.filter(
+                    Division.ring_id == ring.id,
+                    Division.event_type == "poomsae",
+                    db.or_(Division.poomsae_style != "bracket", Division.poomsae_style.is_(None)),
+                    Division.event_status == "Completed",
+                    Division.ring_sequence.isnot(None),
+                )
+                .order_by(Division.ring_sequence.desc())
+                .first()
+            )
+
+            # Determine the overall last completed poomsae event (bracket match vs group division).
+            # match_number encodes ring_id * 100 + sequence; use % 100 to recover the sequence.
+            bracket_seq = (last_completed.match_number % 100) if (last_completed and last_completed.match_number) else -1
+            group_seq = last_completed_group_div.ring_sequence if last_completed_group_div else -1
+            if group_seq > bracket_seq:
+                poomsae_last_completed = {"kind": "division", "obj": last_completed_group_div}
+            elif bracket_seq >= 0:
+                poomsae_last_completed = {"kind": "match", "obj": last_completed}
+            else:
+                poomsae_last_completed = None
+
+            # Hide the match-based last_completed for poomsae; use poomsae_last_completed instead.
+            ring_data[-1]["last_completed"] = None
+
             # Show group and un-configured poomsae divisions (exclude Completed); bracket ones appear via matches.
             group_divisions = Division.query.filter(
                 Division.ring_id == ring.id,
@@ -805,11 +832,22 @@ def ui_public_rings():
             for d in group_divisions:
                 poomsae_items.append({"seq": d.ring_sequence, "kind": "division", "obj": d})
             poomsae_items.sort(key=lambda item: (item["seq"] is None, item["seq"] or 0))
+
+            # Limit to 1 In Progress + 3 Pending (mirrors the bracket .limit(4) logic).
+            def _get_item_status(item):
+                return item["obj"].status if item["kind"] == "match" else item["obj"].event_status
+
+            in_progress_items = [i for i in poomsae_items if _get_item_status(i) == "In Progress"]
+            pending_items = [i for i in poomsae_items if _get_item_status(i) == "Pending"]
+            poomsae_items = in_progress_items[:1] + pending_items[:3]
+
             ring_data[-1]["poomsae_items"] = poomsae_items
+            ring_data[-1]["poomsae_last_completed"] = poomsae_last_completed
             # Clear matches so the generic match loop in the template does not double-render them
             ring_data[-1]["matches"] = []
         else:
             ring_data[-1]["poomsae_items"] = []
+            ring_data[-1]["poomsae_last_completed"] = None
 
     return render_template("_public_rings_fragment.html", rings=ring_data)
 
