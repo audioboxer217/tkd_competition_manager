@@ -556,6 +556,135 @@ def results_view():
     return render_template("results.html")
 
 
+@app.route("/schedule")
+def public_schedule_view():
+    ring_filter = request.args.get("ring_id", "")
+    event_type_filter = request.args.get("event_type", "")
+    search = request.args.get("search", "").strip()
+    if event_type_filter not in ("", *VALID_EVENT_TYPES):
+        event_type_filter = ""
+    rings = Ring.query.order_by(Ring.name).all()
+
+    match_query = Match.query.options(
+        joinedload(Match.division).joinedload(Division.ring),
+        joinedload(Match.competitor1),
+        joinedload(Match.competitor2),
+    ).filter(Match.status != "Completed (Bye)")
+
+    if event_type_filter:
+        match_query = match_query.filter(Match.division.has(Division.event_type == event_type_filter))
+
+    if ring_filter == "none":
+        match_query = match_query.filter(Match.division.has(Division.ring_id.is_(None)))
+    elif ring_filter:
+        try:
+            ring_id = int(ring_filter)
+        except ValueError:
+            ring_id = None
+        if ring_id is not None:
+            match_query = match_query.filter(Match.division.has(Division.ring_id == ring_id))
+
+    if search:
+        match_query = match_query.filter(
+            Match.competitor1.has(Competitor.name.ilike(f"%{search}%"))
+            | Match.competitor2.has(Competitor.name.ilike(f"%{search}%"))
+        )
+
+    matches = match_query.order_by(Match.division_id, Match.id).all()
+
+    grouped_by_division = defaultdict(list)
+    for match in matches:
+        grouped_by_division[match.division].append(match)
+
+    division_data = []
+    for division in sorted(grouped_by_division.keys(), key=lambda d: d.name):
+        grouped_rounds = defaultdict(list)
+        for match in grouped_by_division[division]:
+            grouped_rounds[match.round_name].append(match)
+
+        sorted_rounds = dict(sorted(grouped_rounds.items(), key=lambda x: _round_sort_key(x[0]), reverse=True))
+
+        division_matches = grouped_by_division[division]
+        sequences = [
+            m.match_number % 100
+            for m in division_matches
+            if m.match_number is not None and m.ring_id is not None
+        ]
+        min_sequence = min(sequences) if sequences else None
+
+        division_data.append(
+            {
+                "division": division,
+                "rounds": sorted_rounds,
+                "ring": division.ring,
+                "style": "bracket",
+                "min_sequence": min_sequence,
+            }
+        )
+
+    group_query = (
+        Division.query.filter(Division.event_type == "poomsae", Division.poomsae_style == "group")
+        .options(
+            joinedload(Division.ring),
+            joinedload(Division.competitors),
+        )
+        .order_by(Division.name)
+    )
+
+    if event_type_filter and event_type_filter != "poomsae":
+        group_query = group_query.filter(False)
+
+    if ring_filter == "none":
+        group_query = group_query.filter(Division.ring_id.is_(None))
+    elif ring_filter:
+        try:
+            ring_id = int(ring_filter)
+        except ValueError:
+            ring_id = None
+        if ring_id is not None:
+            group_query = group_query.filter(Division.ring_id == ring_id)
+
+    group_divisions = group_query.all()
+    for division in group_divisions:
+        competitors = division.competitors
+        if search:
+            competitors = [c for c in competitors if search.lower() in c.name.lower()]
+            if not competitors:
+                continue
+
+        division_data.append(
+            {
+                "division": division,
+                "competitors": competitors,
+                "ring": division.ring,
+                "style": "group",
+            }
+        )
+
+    def _schedule_sort_key(item):
+        division = item["division"]
+        ring_name = division.ring.name.lower() if division.ring else ""
+        has_ring = division.ring is not None
+        if item.get("style") == "bracket":
+            sequence = item.get("min_sequence")
+        else:
+            sequence = division.ring_sequence
+        has_sequence = sequence is not None
+        event_type_order = 0 if division.event_type == "poomsae" else 1
+        return (0 if has_ring else 1, ring_name, event_type_order, 0 if has_sequence else 1, sequence or 0, division.name.lower())
+
+    division_data.sort(key=_schedule_sort_key)
+
+    return render_template(
+        "public_schedule.html",
+        division_data=division_data,
+        rings=rings,
+        ring_filter=ring_filter,
+        event_type_filter=event_type_filter,
+        search=search,
+    )
+
+
 @app.route("/ui/divisions/<int:div_id>/bracket", methods=["GET"])
 def brack(div_id):
     division = Division.query.get_or_404(div_id)

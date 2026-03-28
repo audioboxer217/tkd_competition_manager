@@ -1849,9 +1849,101 @@ class TestPageRoutes:
         assert b"No divisions found" in resp.data
 
 
+
 # ---------------------------------------------------------------------------
 # Event types
 # ---------------------------------------------------------------------------
+
+
+class TestPublicSchedule:
+    def test_public_schedule_accessible_without_login(self, client):
+        resp = client.get("/schedule")
+        assert resp.status_code == 200
+        assert b"Match Schedule" in resp.data
+
+    def test_public_schedule_shows_divisions_with_matches(self, client):
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_id = _create_division(client, "Div A").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _generate_bracket(client, div_id)
+        client.patch(f"/ui/divisions/{div_id}/bracket_ring", data={"ring_id": str(ring_id)})
+
+        resp = client.get("/schedule")
+        assert resp.status_code == 200
+        assert b"Div A" in resp.data
+        assert b"Alice" in resp.data
+        assert b"Bob" in resp.data
+
+    def test_public_schedule_has_no_admin_controls(self, client):
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+        div_id = _create_division(client, "Div A").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _generate_bracket(client, div_id)
+        client.patch(f"/ui/divisions/{div_id}/bracket_ring", data={"ring_id": str(ring_id)})
+
+        resp = client.get("/schedule")
+        assert resp.status_code == 200
+        # No manage links to admin pages
+        assert b"Manage Bracket" not in resp.data
+        assert b"/admin/divisions" not in resp.data
+        # No scheduling form inputs
+        assert b'hx-put="/matches/' not in resp.data
+
+    def test_public_schedule_search_filters_by_competitor_name(self, client):
+        div_id = _create_division(client, "Div A").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _generate_bracket(client, div_id)
+
+        resp = client.get("/schedule?search=Alice")
+        assert resp.status_code == 200
+        assert b"Alice" in resp.data
+        assert b"Div A" in resp.data
+
+    def test_public_schedule_search_no_match_shows_empty(self, client):
+        div_id = _create_division(client, "Div A").get_json()["id"]
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _generate_bracket(client, div_id)
+
+        resp = client.get("/schedule?search=zzznomatch")
+        assert resp.status_code == 200
+        assert b"Div A" not in resp.data
+
+    def test_public_schedule_event_type_filter(self, client):
+        kyorugi_id = _create_division(client, "Kyorugi Div", event_type="kyorugi").get_json()["id"]
+        _add_competitors(client, kyorugi_id, ["A", "B"])
+        _generate_bracket(client, kyorugi_id)
+
+        poomsae_id = _create_division(client, "Poomsae Div", event_type="poomsae").get_json()["id"]
+        _add_competitors(client, poomsae_id, ["C", "D"])
+        _generate_bracket(client, poomsae_id)
+
+        resp = client.get("/schedule?event_type=kyorugi")
+        assert resp.status_code == 200
+        assert b"Kyorugi Div" in resp.data
+        assert b"Poomsae Div" not in resp.data
+
+    def test_public_schedule_ring_filter(self, client):
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+
+        div_with_ring = _create_division(client, "Div With Ring").get_json()["id"]
+        _add_competitors(client, div_with_ring, ["A", "B"])
+        _generate_bracket(client, div_with_ring)
+        client.patch(f"/ui/divisions/{div_with_ring}/bracket_ring", data={"ring_id": str(ring_id)})
+
+        div_no_ring = _create_division(client, "Div No Ring").get_json()["id"]
+        _add_competitors(client, div_no_ring, ["C", "D"])
+        _generate_bracket(client, div_no_ring)
+
+        resp = client.get(f"/schedule?ring_id={ring_id}")
+        assert resp.status_code == 200
+        assert b"Div With Ring" in resp.data
+        assert b"Div No Ring" not in resp.data
+
+    def test_index_page_has_schedule_link(self, client):
+        resp = client.get("/")
+        assert resp.status_code == 200
+        assert b"/schedule" in resp.data
+        assert b"View Schedule" in resp.data
 
 
 class TestEventTypes:
