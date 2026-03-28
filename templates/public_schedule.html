@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Match Schedule</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f4f7f6;
+            padding: 20px;
+        }
+
+        h1 {
+            text-align: center;
+            color: #0f172a;
+            margin-bottom: 8px;
+        }
+
+        a.back-link {
+            color: #64748b;
+            text-decoration: none;
+            font-size: 0.9rem;
+        }
+
+        a.back-link:hover {
+            color: #0f172a;
+        }
+
+        .top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            max-width: 900px;
+            margin: 0 auto 20px auto;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .filter-form {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .filter-form label {
+            font-size: 0.9rem;
+            color: #475569;
+            font-weight: 600;
+        }
+
+        .filter-form select,
+        .filter-form input[type="text"] {
+            padding: 6px 10px;
+            border: 1px solid #cbd5e1;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+
+        .filter-form input[type="text"] {
+            min-width: 180px;
+        }
+
+        .filter-form button[type="submit"] {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85rem;
+        }
+
+        .filter-form button[type="submit"]:hover {
+            background: #1d4ed8;
+        }
+
+        .division-section {
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            margin: 0 auto 24px auto;
+            max-width: 900px;
+            overflow: hidden;
+        }
+
+        .division-header {
+            background: #e2e8f0;
+            padding: 10px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .division-title {
+            font-weight: 700;
+            color: #0f172a;
+            font-size: 1rem;
+        }
+
+        .division-meta {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .badge {
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        .badge-kyorugi {
+            background: #dbeafe;
+            color: #1d4ed8;
+        }
+
+        .badge-poomsae {
+            background: #dcfce7;
+            color: #15803d;
+        }
+
+        .ring-label {
+            font-size: 0.85rem;
+            color: #475569;
+        }
+
+        .ring-label strong {
+            color: #0f172a;
+        }
+
+        .round-section {
+            padding: 0 16px 8px 16px;
+        }
+
+        .round-header {
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: #64748b;
+            padding: 10px 0 6px 0;
+            border-bottom: 1px solid #f1f5f9;
+            margin-bottom: 6px;
+        }
+
+        .match-card {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            margin-bottom: 8px;
+            padding: 10px 12px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .match-competitors {
+            flex: 1;
+            min-width: 200px;
+            font-size: 0.9rem;
+            line-height: 1.6;
+        }
+
+        .chung {
+            color: #252ceb;
+            font-weight: 600;
+        }
+
+        .hong {
+            color: #eb2525;
+            font-weight: 600;
+        }
+
+        .status-label {
+            font-size: 0.85rem;
+            color: #475569;
+        }
+
+        .status-label.assigned {
+            color: #059669;
+            font-weight: 600;
+        }
+
+        .status-label.in-progress {
+            color: #d97706;
+            font-weight: 600;
+        }
+
+        .status-label.completed {
+            color: #64748b;
+        }
+
+        .no-ring-note {
+            font-size: 0.8rem;
+            color: #94a3b8;
+            font-style: italic;
+        }
+
+        .empty-state {
+            text-align: center;
+            color: #94a3b8;
+            padding: 40px;
+            font-size: 1rem;
+        }
+
+        @media print {
+            @page {
+                size: portrait;
+                margin: 0.5in;
+            }
+
+            body {
+                background: #fff !important;
+                padding: 0 !important;
+                font-size: 10pt;
+                color: #000;
+            }
+
+            h1 {
+                margin: 0 0 10pt 0;
+                color: #000;
+                font-size: 16pt;
+            }
+
+            .top-bar,
+            a.back-link {
+                display: none !important;
+            }
+
+            .division-section {
+                box-shadow: none !important;
+                border: 1px solid #999 !important;
+                border-radius: 0 !important;
+                margin: 0 0 10pt 0 !important;
+                max-width: 100% !important;
+                break-inside: avoid;
+                page-break-inside: avoid;
+            }
+
+            .division-header {
+                background: #f2f2f2 !important;
+                border-bottom: 1px solid #999;
+            }
+
+            .round-section {
+                break-inside: avoid;
+                page-break-inside: avoid;
+            }
+
+            .match-card {
+                background: #fff !important;
+                border: 1px solid #ccc !important;
+                break-inside: avoid;
+                page-break-inside: avoid;
+            }
+
+            .status-label,
+            .ring-label,
+            .division-title,
+            .round-header,
+            .chung,
+            .hong {
+                color: #000 !important;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>Match Schedule</h1>
+
+    <div class="top-bar">
+        <a href="/" class="back-link">&larr; Back to Live View</a>
+        <form class="filter-form" method="GET" action="/schedule">
+            <label for="search-input">Search:</label>
+            <input type="text" id="search-input" name="search" value="{{ search }}" placeholder="Competitor name&hellip;" autocomplete="off">
+
+            <label for="event-type-filter">Event:</label>
+            <select id="event-type-filter" name="event_type">
+                <option value="" {% if not event_type_filter %}selected{% endif %}>All Events</option>
+                <option value="kyorugi" {% if event_type_filter=="kyorugi" %}selected{% endif %}>Kyorugi</option>
+                <option value="poomsae" {% if event_type_filter=="poomsae" %}selected{% endif %}>Poomsae</option>
+            </select>
+
+            <label for="ring-filter">Ring:</label>
+            <select id="ring-filter" name="ring_id">
+                <option value="">All Rings</option>
+                {% for ring in rings %}
+                <option value="{{ ring.id }}" {% if ring_filter==ring.id | string %}selected{% endif %}>
+                    {{ ring.name }}
+                </option>
+                {% endfor %}
+            </select>
+
+            <button type="submit">Filter</button>
+        </form>
+        <button type="button" onclick="window.print()" style="background: #e2e8f0; color: #475569; border: 1px solid #cbd5e1; padding: 5px 12px; border-radius: 4px; cursor: pointer; font-size: 0.85rem;">Print</button>
+    </div>
+
+    {% if not division_data %}
+    <div class="empty-state">No divisions with matches found{% if ring_filter or search %} matching the current filters{% endif %}.</div>
+    {% endif %}
+
+    {% for item in division_data %}
+    {% set division = item.division %}
+    {% set ring = item.ring %}
+    {% set style = item.style %}
+
+    <div class="division-section" id="division-{{ division.id }}">
+        <div class="division-header">
+            <span class="division-title">{{ division.name }}</span>
+            <div class="division-meta">
+                <span class="badge {{ 'badge-kyorugi' if division.event_type == 'kyorugi' else 'badge-poomsae' }}">
+                    {{ "Kyorugi" if division.event_type == "kyorugi" else "Poomsae" }}
+                </span>
+                {% if style == "group" %}
+                <span class="badge" style="background: #f3e8ff; color: #7c3aed;">Group</span>
+                {% endif %}
+                {% if ring %}
+                <span class="ring-label">Ring: <strong>{{ ring.name }}</strong></span>
+                {% else %}
+                <span class="ring-label" style="color: #b45309; font-weight: 600;">&#9888; No ring assigned</span>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if style == "bracket" %}
+        {% for round_name, match_list in item.rounds.items() %}
+        <div class="round-section">
+            <div class="round-header">{{ round_name }}</div>
+            {% for match in match_list %}
+            <div class="match-card">
+                <div class="match-competitors">
+                    <div><span class="chung">Chung:</span> {{ match.competitor1.name if match.competitor1 else "TBD" }}</div>
+                    <div><span class="hong">Hong:</span> {{ match.competitor2.name if match.competitor2 else "TBD" }}</div>
+                </div>
+                <div>
+                    {% if match.status == "Pending" %}
+                    {% if match.match_number %}
+                    <span class="status-label assigned">Match {{ match.match_number }}</span>
+                    {% elif match.division.ring_id %}
+                    <span class="no-ring-note">Not scheduled yet</span>
+                    {% else %}
+                    <span class="no-ring-note">No ring assigned</span>
+                    {% endif %}
+                    {% elif match.status == "In Progress" %}
+                    <span class="status-label in-progress">
+                        In Progress{% if match.match_number %} &mdash; Match {{ match.match_number }}{% endif %}
+                    </span>
+                    {% else %}
+                    <span class="status-label completed">
+                        {{ match.status }}{% if match.match_number %} &mdash; Match {{ match.match_number }}{% endif %}
+                    </span>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endfor %}
+        {% elif style == "group" %}
+        <div class="round-section">
+            <div class="round-header">Competitors</div>
+            {% if not item.competitors %}
+            <div class="no-ring-note" style="padding: 10px;">No competitors added yet.</div>
+            {% else %}
+            <div style="padding: 0 12px 8px 12px;">
+                <div style="margin-bottom: 8px;">
+                    <span style="font-size: 0.85rem; color: #475569;"><strong>{{ item.competitors|length }}</strong> competitor(s)</span>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 8px;">
+                    {% for competitor in item.competitors %}
+                    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px; font-size: 0.9rem;">
+                        <div style="font-weight: 600; color: #0f172a;">{{ competitor.name }}</div>
+                    </div>
+                    {% endfor %}
+                </div>
+                <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #e2e8f0;">
+                    <span style="font-size: 0.85rem; color: #475569;">
+                        Status: <strong style="{% if division.event_status == 'In Progress' %}color: #f59e0b;{% elif division.event_status == 'Completed' %}color: #10b981;{% else %}color: #64748b;{% endif %}">{{ division.event_status }}</strong>
+                    </span>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+
+</body>
+
+</html>
