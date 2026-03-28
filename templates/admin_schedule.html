@@ -347,8 +347,7 @@
                 <option value="none" {% if ring_filter=="none" %}selected{% endif %}>No Ring</option>
             </select>
         </form>
-        <button onclick="window.print()"
-            style="background: #2563eb; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 0.9rem; font-weight: 600; white-space: nowrap;">Print</button>
+        <button type="button" class="save-btn" onclick="window.print()">Print</button>
     </div>
 
     {% if not division_data %}
