@@ -22,7 +22,7 @@
     </div>
     {% endif %}
     {% if not ring.matches and not ring.poomsae_items %}
-    {% if not ring.last_completed %}
+    {% if not ring.last_completed and not ring.poomsae_last_completed %}
     <p style="color: #94a3b8;">No upcoming matches.</p>
     {% endif %}
     {% endif %}

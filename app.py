@@ -852,13 +852,27 @@ def ui_public_rings():
                 poomsae_items.append({"seq": d.ring_sequence, "kind": "division", "obj": d})
             poomsae_items.sort(key=lambda item: (item["seq"] is None, item["seq"] or 0))
 
-            # Limit to 1 In Progress + 3 Pending (mirrors the bracket .limit(4) logic).
+            # Limit to 1 In Progress + 3 Pending (mirrors the bracket .limit(4) logic),
+            # while preserving the sequence-based ordering established above.
             def _get_item_status(item):
                 return item["obj"].status if item["kind"] == "match" else item["obj"].event_status
 
-            in_progress_items = [i for i in poomsae_items if _get_item_status(i) == "In Progress"]
-            pending_items = [i for i in poomsae_items if _get_item_status(i) == "Pending"]
-            poomsae_items = in_progress_items[:1] + pending_items[:3]
+            in_progress_count = 0
+            pending_count = 0
+            capped_items = []
+            for item in poomsae_items:
+                status = _get_item_status(item)
+                if status == "In Progress" and in_progress_count < 1:
+                    capped_items.append(item)
+                    in_progress_count += 1
+                elif status == "Pending" and pending_count < 3:
+                    capped_items.append(item)
+                    pending_count += 1
+
+                if in_progress_count >= 1 and pending_count >= 3:
+                    break
+
+            poomsae_items = capped_items
 
             ring_data[-1]["poomsae_items"] = poomsae_items
             ring_data[-1]["poomsae_last_completed"] = poomsae_last_completed
