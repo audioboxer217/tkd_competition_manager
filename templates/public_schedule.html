@@ -308,7 +308,7 @@
     </div>
 
     {% if not division_data %}
-    <div class="empty-state">No divisions with matches found{% if ring_filter or search %} matching the current filters{% endif %}.</div>
+    <div class="empty-state">No divisions with matches found{% if ring_filter or search or event_type_filter %} matching the current filters{% endif %}.</div>
     {% endif %}
 
     {% for item in division_data %}
