@@ -3100,6 +3100,110 @@ class TestPoomsaePublicRings:
         assert "status-completed" in body
         assert "Pending Poomsae" in body
 
+    def test_poomsae_live_view_completed_bracket_match_wins_when_higher_seq(self, client):
+        """When both a completed bracket match and a completed group division exist,
+        the one with the higher sequence number appears as last-completed."""
+        from app import Division as Div, Match as M, Ring as R, Competitor as C, db as _db
+
+        ring = R(name="Ring 1")
+        bracket_div = Div(name="Bracket Poomsae", event_type="poomsae", poomsae_style="bracket")
+        group_div = Div(name="Group Poomsae", event_type="poomsae", poomsae_style="group",
+                        event_status="Completed")
+        _db.session.add_all([ring, bracket_div, group_div])
+        _db.session.flush()
+
+        c1 = C(name="Alice Smith", division_id=bracket_div.id)
+        c2 = C(name="Bob Jones", division_id=bracket_div.id)
+        _db.session.add_all([c1, c2])
+        _db.session.flush()
+
+        # Group div at sequence 3, bracket match at sequence 5 (higher → bracket should win)
+        group_div.ring_id = ring.id
+        group_div.ring_sequence = 3
+
+        bracket_match = M(
+            ring_id=ring.id, division_id=bracket_div.id,
+            competitor1_id=c1.id, competitor2_id=c2.id,
+            status="Completed", winner_id=c1.id,
+            match_number=ring.id * 100 + 5,  # sequence 5
+            round_name="Final",
+        )
+        _db.session.add(bracket_match)
+        _db.session.commit()
+
+        resp = client.get("/ui/public_rings?event_type=poomsae")
+        assert resp.status_code == 200
+        body = resp.data.decode()
+        # Bracket match (seq 5) wins over group div (seq 3)
+        assert "Bracket Poomsae" in body
+        assert "A. Smith" in body
+        # Group div should NOT be the last-completed header
+        lc_block = body[: body.index("A. Smith")]
+        assert "Group Poomsae" not in lc_block
+
+    def test_poomsae_live_view_group_div_wins_when_higher_seq(self, client):
+        """When the completed group division has a higher sequence than any completed
+        bracket match, the group division appears as last-completed."""
+        from app import Division as Div, Match as M, Ring as R, Competitor as C, db as _db
+
+        ring = R(name="Ring 1")
+        bracket_div = Div(name="Bracket Poomsae", event_type="poomsae", poomsae_style="bracket")
+        group_div = Div(name="Group Poomsae", event_type="poomsae", poomsae_style="group",
+                        event_status="Completed")
+        _db.session.add_all([ring, bracket_div, group_div])
+        _db.session.flush()
+
+        c1 = C(name="Alice Smith", division_id=bracket_div.id)
+        c2 = C(name="Bob Jones", division_id=bracket_div.id)
+        _db.session.add_all([c1, c2])
+        _db.session.flush()
+
+        # Bracket match at sequence 2, group div at sequence 5 (higher → group should win)
+        group_div.ring_id = ring.id
+        group_div.ring_sequence = 5
+
+        bracket_match = M(
+            ring_id=ring.id, division_id=bracket_div.id,
+            competitor1_id=c1.id, competitor2_id=c2.id,
+            status="Completed", winner_id=c1.id,
+            match_number=ring.id * 100 + 2,  # sequence 2
+            round_name="Final",
+        )
+        _db.session.add(bracket_match)
+        _db.session.commit()
+
+        resp = client.get("/ui/public_rings?event_type=poomsae")
+        assert resp.status_code == 200
+        body = resp.data.decode()
+        # Group div (seq 5) wins over bracket match (seq 2)
+        assert "Group Poomsae" in body
+        assert "status-completed" in body
+        # Bracket match name should not appear as the last-completed header
+        group_idx = body.index("Group Poomsae")
+        assert "Bracket Poomsae" not in body[:group_idx]
+
+    def test_poomsae_live_view_sequence_order_preserved_in_capped_list(self, client):
+        """After capping, items must remain in sequence order (not In Progress first)."""
+        ring_id = _create_ring(client, "Ring 1").get_json()["id"]
+
+        # Pending at seq 1, In Progress at seq 2, two more Pending at seq 3 and 4
+        statuses = ["Pending", "In Progress", "Pending", "Pending"]
+        for i, status in enumerate(statuses):
+            d = _create_division(client, f"Div {i + 1}", "poomsae").get_json()["id"]
+            client.patch(
+                f"/ui/divisions/{d}/ring_assignment",
+                data={"ring_id": str(ring_id), "event_status": status, "ring_sequence": str(i + 1)},
+            )
+
+        resp = client.get("/ui/public_rings?event_type=poomsae")
+        assert resp.status_code == 200
+        body = resp.data.decode()
+        # All 4 should appear (1 In Progress + 3 Pending)
+        for name in ["Div 1", "Div 2", "Div 3", "Div 4"]:
+            assert name in body
+        # Sequence order: Div 1 (seq 1) before Div 2 (seq 2) before Div 3 (seq 3)
+        assert body.index("Div 1") < body.index("Div 2") < body.index("Div 3")
+
 
 class TestPoomsaeScorekeeperDivisions:
     """Tests for the poomsae divisions section in the scorekeeper."""
