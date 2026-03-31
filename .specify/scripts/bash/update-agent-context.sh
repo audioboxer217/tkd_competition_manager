@@ -325,10 +325,16 @@ create_new_agent_file() {
     language_conventions=$(get_language_conventions "$NEW_LANG")
     
     # Perform substitutions with error checking using safer approach
-    # Escape special characters for sed by using a different delimiter or escaping
-    local escaped_lang=$(printf '%s\n' "$NEW_LANG" | sed 's/[\[\.*^$()+{}|]/\\&/g')
-    local escaped_framework=$(printf '%s\n' "$NEW_FRAMEWORK" | sed 's/[\[\.*^$()+{}|]/\\&/g')
-    local escaped_branch=$(printf '%s\n' "$CURRENT_BRANCH" | sed 's/[\[\.*^$()+{}|]/\\&/g')
+    # Escape special characters for sed replacement strings:
+    #   1. backslash must be escaped first (to avoid double-escaping)
+    #   2. & is the "whole match" reference in sed replacements
+    #   3. | is the delimiter used in our s|...|...| expressions
+    local escaped_lang
+    escaped_lang=$(printf '%s\n' "$NEW_LANG" | sed 's/\\/\\\\/g; s/&/\\&/g; s/|/\\|/g')
+    local escaped_framework
+    escaped_framework=$(printf '%s\n' "$NEW_FRAMEWORK" | sed 's/\\/\\\\/g; s/&/\\&/g; s/|/\\|/g')
+    local escaped_branch
+    escaped_branch=$(printf '%s\n' "$CURRENT_BRANCH" | sed 's/\\/\\\\/g; s/&/\\&/g; s/|/\\|/g')
     
     # Build technology stack and recent change strings conditionally
     local tech_stack
