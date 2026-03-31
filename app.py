@@ -153,8 +153,6 @@ class ApiToken(db.Model):
     last_used_at = db.Column(db.DateTime(timezone=True), nullable=True)
     user_id = db.Column(db.String(255), nullable=True)  # optional owner reference (e.g. Supabase user id)
 
-    __table_args__ = (db.Index("ix_api_token_hash", "token_hash"),)
-
 
 # --- RING MANAGEMENT ---
 @app.route("/rings", methods=["POST", "GET"])
@@ -1731,7 +1729,13 @@ def admin_create_api_token():
     db.session.add(api_token)
     db.session.commit()
     tokens = ApiToken.query.order_by(ApiToken.created_at.desc()).all()
-    return render_template("admin_api_tokens.html", tokens=tokens, new_token=raw_token, new_token_name=name)
+    response = make_response(
+        render_template("admin_api_tokens.html", tokens=tokens, new_token=raw_token, new_token_name=name)
+    )
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
 
 
 @app.route("/admin/api-tokens/<int:token_id>/revoke", methods=["POST"])
