@@ -3248,7 +3248,11 @@ class TestPoomsaePublicRings:
     def test_poomsae_live_view_completed_bracket_match_wins_when_higher_seq(self, client):
         """When both a completed bracket match and a completed group division exist,
         the one with the higher sequence number appears as last-completed."""
-        from app import Division as Div, Match as M, Ring as R, Competitor as C, db as _db
+        from app import Competitor as C
+        from app import Division as Div
+        from app import Match as M
+        from app import Ring as R
+        from app import db as _db
 
         ring = R(name="Ring 1")
         bracket_div = Div(name="Bracket Poomsae", event_type="poomsae", poomsae_style="bracket")
@@ -3289,7 +3293,11 @@ class TestPoomsaePublicRings:
     def test_poomsae_live_view_group_div_wins_when_higher_seq(self, client):
         """When the completed group division has a higher sequence than any completed
         bracket match, the group division appears as last-completed."""
-        from app import Division as Div, Match as M, Ring as R, Competitor as C, db as _db
+        from app import Competitor as C
+        from app import Division as Div
+        from app import Match as M
+        from app import Ring as R
+        from app import db as _db
 
         ring = R(name="Ring 1")
         bracket_div = Div(name="Bracket Poomsae", event_type="poomsae", poomsae_style="bracket")
@@ -5053,12 +5061,25 @@ class TestRouteInventory:
         # API v1 endpoints
         ("GET", "/api/v1/rings"),
         ("POST", "/api/v1/rings"),
+        ("GET", "/api/v1/rings/1"),
+        ("PATCH", "/api/v1/rings/1"),
+        ("DELETE", "/api/v1/rings/1"),
         ("GET", "/api/v1/divisions"),
         ("POST", "/api/v1/divisions"),
         ("GET", "/api/v1/divisions/1"),
         ("PUT", "/api/v1/divisions/1"),
+        ("PATCH", "/api/v1/divisions/1"),
         ("DELETE", "/api/v1/divisions/1"),
         ("GET", "/api/v1/divisions/1/bracket"),
+        ("GET", "/api/v1/competitors"),
+        ("POST", "/api/v1/competitors"),
+        ("GET", "/api/v1/competitors/1"),
+        ("PATCH", "/api/v1/competitors/1"),
+        ("DELETE", "/api/v1/competitors/1"),
+        ("GET", "/api/v1/matches"),
+        ("POST", "/api/v1/matches"),
+        ("GET", "/api/v1/matches/1"),
+        ("PATCH", "/api/v1/matches/1"),
         ("POST", "/api/v1/matches/1/result"),
     ]
 
@@ -5583,3 +5604,481 @@ class TestAdminApiTokens:
     def test_revoke_nonexistent_token_returns_404(self, client):
         resp = client.post("/admin/api-tokens/99999/revoke")
         assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# API v1 — /api/v1/rings/<id>
+# ---------------------------------------------------------------------------
+
+
+class TestApiV1RingsCRUD:
+    def test_get_ring(self, api_client):
+        ring_id = api_client.post("/api/v1/rings", json={"name": "Ring X"}).get_json()["data"]["id"]
+        resp = api_client.get(f"/api/v1/rings/{ring_id}")
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["error"] is None
+        assert body["data"]["id"] == ring_id
+        assert body["data"]["name"] == "Ring X"
+
+    def test_get_ring_not_found(self, api_client):
+        resp = api_client.get("/api/v1/rings/9999")
+        assert resp.status_code == 404
+        assert resp.get_json()["error"]["code"] == "NOT_FOUND"
+
+    def test_patch_ring(self, api_client):
+        ring_id = api_client.post("/api/v1/rings", json={"name": "Old Name"}).get_json()["data"]["id"]
+        resp = api_client.patch(f"/api/v1/rings/{ring_id}", json={"name": "New Name"})
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["error"] is None
+        assert body["data"]["name"] == "New Name"
+
+    def test_patch_ring_empty_name_returns_400(self, api_client):
+        ring_id = api_client.post("/api/v1/rings", json={"name": "Ring 1"}).get_json()["data"]["id"]
+        resp = api_client.patch(f"/api/v1/rings/{ring_id}", json={"name": ""})
+        assert resp.status_code == 400
+        assert resp.get_json()["error"]["code"] == "BAD_REQUEST"
+
+    def test_patch_ring_not_found(self, api_client):
+        resp = api_client.patch("/api/v1/rings/9999", json={"name": "X"})
+        assert resp.status_code == 404
+        assert resp.get_json()["error"]["code"] == "NOT_FOUND"
+
+    def test_patch_ring_non_dict_body_returns_400(self, api_client):
+        ring_id = api_client.post("/api/v1/rings", json={"name": "Ring 1"}).get_json()["data"]["id"]
+        resp = api_client.patch(f"/api/v1/rings/{ring_id}", json=["name", "X"])
+        assert resp.status_code == 400
+        assert resp.get_json()["error"]["code"] == "BAD_REQUEST"
+
+    def test_delete_ring(self, api_client):
+        ring_id = api_client.post("/api/v1/rings", json={"name": "To Delete"}).get_json()["data"]["id"]
+        resp = api_client.delete(f"/api/v1/rings/{ring_id}")
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["error"] is None
+        assert body["data"]["deleted"] is True
+        assert api_client.get(f"/api/v1/rings/{ring_id}").status_code == 404
+
+    def test_delete_ring_not_found(self, api_client):
+        resp = api_client.delete("/api/v1/rings/9999")
+        assert resp.status_code == 404
+        assert resp.get_json()["error"]["code"] == "NOT_FOUND"
+
+
+# ---------------------------------------------------------------------------
+# API v1 — PATCH /api/v1/divisions/<id>
+# ---------------------------------------------------------------------------
+
+
+class TestApiV1DivisionsPatch:
+    def test_patch_division(self, api_client):
+        div_id = api_client.post("/api/v1/divisions", json={"name": "Old"}).get_json()["data"]["id"]
+        resp = api_client.patch(f"/api/v1/divisions/{div_id}", json={"name": "New"})
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["error"] is None
+        assert body["data"]["name"] == "New"
+
+    def test_patch_division_not_found(self, api_client):
+        resp = api_client.patch("/api/v1/divisions/9999", json={"name": "X"})
+        assert resp.status_code == 404
+        assert resp.get_json()["error"]["code"] == "NOT_FOUND"
+
+    def test_patch_division_empty_name_returns_400(self, api_client):
+        div_id = api_client.post("/api/v1/divisions", json={"name": "D"}).get_json()["data"]["id"]
+        resp = api_client.patch(f"/api/v1/divisions/{div_id}", json={"name": ""})
+        assert resp.status_code == 400
+        assert resp.get_json()["error"]["code"] == "BAD_REQUEST"
+
+
+# ---------------------------------------------------------------------------
+# API v1 — /api/v1/competitors
+# ---------------------------------------------------------------------------
+
+
+class TestApiV1Competitors:
+    def _create_division(self, api_client, name="Test Division"):
+        return api_client.post("/api/v1/divisions", json={"name": name}).get_json()["data"]["id"]
+
+    def test_list_competitors_empty(self, api_client):
+        resp = api_client.get("/api/v1/competitors")
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["error"] is None
+        assert body["data"] == []
+
+    def test_create_competitor(self, api_client):
+        div_id = self._create_division(api_client)
+        resp = api_client.post("/api/v1/competitors", json={"name": "Alice", "division_id": div_id})
+        assert resp.status_code == 201
+        body = resp.get_json()
+        assert body["error"] is None
+        assert body["data"]["name"] == "Alice"
+        assert body["data"]["division_id"] == div_id
+        assert "id" in body["data"]
+        assert body["data"]["position"] is None
+
+    def test_create_competitor_with_position(self, api_client):
+        div_id = self._create_division(api_client)
+        resp = api_client.post("/api/v1/competitors", json={"name": "Bob", "division_id": div_id, "position": 1})
+        assert resp.status_code == 201
+        assert resp.get_json()["data"]["position"] == 1
+
+    def test_create_competitor_missing_name(self, api_client):
+        div_id = self._create_division(api_client)
+        resp = api_client.post("/api/v1/competitors", json={"division_id": div_id})
+        assert resp.status_code == 400
+        assert resp.get_json()["error"]["code"] == "BAD_REQUEST"
+
+    def test_create_competitor_empty_name(self, api_client):
+        div_id = self._create_division(api_client)
+        resp = api_client.post("/api/v1/competitors", json={"name": "", "division_id": div_id})
+        assert resp.status_code == 400
+        assert resp.get_json()["error"]["code"] == "BAD_REQUEST"
+
+    def test_create_competitor_missing_division_id(self, api_client):
+        resp = api_client.post("/api/v1/competitors", json={"name": "Alice"})
+        assert resp.status_code == 400
+        assert resp.get_json()["error"]["code"] == "BAD_REQUEST"
+
+    def test_create_competitor_division_not_found(self, api_client):
+        resp = api_client.post("/api/v1/competitors", json={"name": "Alice", "division_id": 9999})
+        assert resp.status_code == 404
+        assert resp.get_json()["error"]["code"] == "NOT_FOUND"
+
+    def test_create_competitor_non_dict_body_returns_400(self, api_client):
+        resp = api_client.post("/api/v1/competitors", json=["Alice", 1])
+        assert resp.status_code == 400
+        assert resp.get_json()["error"]["code"] == "BAD_REQUEST"
+
+    def test_list_competitors_after_create(self, api_client):
+        div_id = self._create_division(api_client)
+        api_client.post("/api/v1/competitors", json={"name": "Alice", "division_id": div_id})
+        api_client.post("/api/v1/competitors", json={"name": "Bob", "division_id": div_id})
+        resp = api_client.get("/api/v1/competitors")
+        body = resp.get_json()
+        assert len(body["data"]) == 2
+
+    def test_list_competitors_filter_by_division(self, api_client):
+        div1 = self._create_division(api_client, "Div 1")
+        div2 = self._create_division(api_client, "Div 2")
+        api_client.post("/api/v1/competitors", json={"name": "Alice", "division_id": div1})
+        api_client.post("/api/v1/competitors", json={"name": "Bob", "division_id": div2})
+        resp = api_client.get(f"/api/v1/competitors?division_id={div1}")
+        body = resp.get_json()
+        assert len(body["data"]) == 1
+        assert body["data"][0]["name"] == "Alice"
+
+    def test_get_competitor(self, api_client):
+        div_id = self._create_division(api_client)
+        comp_id = api_client.post("/api/v1/competitors", json={"name": "Alice", "division_id": div_id}).get_json()["data"]["id"]
+        resp = api_client.get(f"/api/v1/competitors/{comp_id}")
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["error"] is None
+        assert body["data"]["id"] == comp_id
+        assert body["data"]["name"] == "Alice"
+
+    def test_get_competitor_not_found(self, api_client):
+        resp = api_client.get("/api/v1/competitors/9999")
+        assert resp.status_code == 404
+        assert resp.get_json()["error"]["code"] == "NOT_FOUND"
+
+    def test_patch_competitor_name(self, api_client):
+        div_id = self._create_division(api_client)
+        comp_id = api_client.post("/api/v1/competitors", json={"name": "Old Name", "division_id": div_id}).get_json()["data"][
+            "id"
+        ]
+        resp = api_client.patch(f"/api/v1/competitors/{comp_id}", json={"name": "New Name"})
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["error"] is None
+        assert body["data"]["name"] == "New Name"
+
+    def test_patch_competitor_position(self, api_client):
+        div_id = self._create_division(api_client)
+        comp_id = api_client.post("/api/v1/competitors", json={"name": "Alice", "division_id": div_id}).get_json()["data"]["id"]
+        resp = api_client.patch(f"/api/v1/competitors/{comp_id}", json={"position": 2})
+        assert resp.status_code == 200
+        assert resp.get_json()["data"]["position"] == 2
+
+    def test_patch_competitor_division(self, api_client):
+        div1 = self._create_division(api_client, "Div 1")
+        div2 = self._create_division(api_client, "Div 2")
+        comp_id = api_client.post("/api/v1/competitors", json={"name": "Alice", "division_id": div1}).get_json()["data"]["id"]
+        resp = api_client.patch(f"/api/v1/competitors/{comp_id}", json={"division_id": div2})
+        assert resp.status_code == 200
+        assert resp.get_json()["data"]["division_id"] == div2
+
+    def test_patch_competitor_empty_name_returns_400(self, api_client):
+        div_id = self._create_division(api_client)
+        comp_id = api_client.post("/api/v1/competitors", json={"name": "Alice", "division_id": div_id}).get_json()["data"]["id"]
+        resp = api_client.patch(f"/api/v1/competitors/{comp_id}", json={"name": ""})
+        assert resp.status_code == 400
+        assert resp.get_json()["error"]["code"] == "BAD_REQUEST"
+
+    def test_patch_competitor_invalid_division_returns_404(self, api_client):
+        div_id = self._create_division(api_client)
+        comp_id = api_client.post("/api/v1/competitors", json={"name": "Alice", "division_id": div_id}).get_json()["data"]["id"]
+        resp = api_client.patch(f"/api/v1/competitors/{comp_id}", json={"division_id": 9999})
+        assert resp.status_code == 404
+        assert resp.get_json()["error"]["code"] == "NOT_FOUND"
+
+    def test_patch_competitor_not_found(self, api_client):
+        resp = api_client.patch("/api/v1/competitors/9999", json={"name": "X"})
+        assert resp.status_code == 404
+        assert resp.get_json()["error"]["code"] == "NOT_FOUND"
+
+    def test_patch_competitor_non_dict_body_returns_400(self, api_client):
+        div_id = self._create_division(api_client)
+        comp_id = api_client.post("/api/v1/competitors", json={"name": "Alice", "division_id": div_id}).get_json()["data"]["id"]
+        resp = api_client.patch(f"/api/v1/competitors/{comp_id}", json=["name", "X"])
+        assert resp.status_code == 400
+        assert resp.get_json()["error"]["code"] == "BAD_REQUEST"
+
+    def test_delete_competitor(self, api_client):
+        div_id = self._create_division(api_client)
+        comp_id = api_client.post("/api/v1/competitors", json={"name": "Alice", "division_id": div_id}).get_json()["data"]["id"]
+        resp = api_client.delete(f"/api/v1/competitors/{comp_id}")
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["error"] is None
+        assert body["data"]["deleted"] is True
+        assert api_client.get(f"/api/v1/competitors/{comp_id}").status_code == 404
+
+    def test_delete_competitor_not_found(self, api_client):
+        resp = api_client.delete("/api/v1/competitors/9999")
+        assert resp.status_code == 404
+        assert resp.get_json()["error"]["code"] == "NOT_FOUND"
+
+    def test_create_competitor_non_json_content_type_returns_415(self, api_client):
+        resp = api_client.post("/api/v1/competitors", data="name=Alice")
+        assert resp.status_code == 415
+
+    def test_patch_competitor_non_json_content_type_returns_415(self, api_client):
+        div_id = self._create_division(api_client)
+        comp_id = api_client.post("/api/v1/competitors", json={"name": "Alice", "division_id": div_id}).get_json()["data"]["id"]
+        resp = api_client.patch(f"/api/v1/competitors/{comp_id}", data="name=New")
+        assert resp.status_code == 415
+
+
+# ---------------------------------------------------------------------------
+# API v1 — /api/v1/matches
+# ---------------------------------------------------------------------------
+
+
+class TestApiV1Matches:
+    def _create_division(self, api_client, name="Test Division"):
+        return api_client.post("/api/v1/divisions", json={"name": name}).get_json()["data"]["id"]
+
+    def _create_competitor(self, api_client, div_id, name="Athlete"):
+        return api_client.post("/api/v1/competitors", json={"name": name, "division_id": div_id}).get_json()["data"]["id"]
+
+    def test_list_matches_empty(self, api_client):
+        resp = api_client.get("/api/v1/matches")
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["error"] is None
+        assert body["data"] == []
+
+    def test_create_match(self, api_client):
+        div_id = self._create_division(api_client)
+        resp = api_client.post("/api/v1/matches", json={"division_id": div_id, "round_name": "Final"})
+        assert resp.status_code == 201
+        body = resp.get_json()
+        assert body["error"] is None
+        assert body["data"]["division_id"] == div_id
+        assert body["data"]["round_name"] == "Final"
+        assert body["data"]["status"] == "Pending"
+        assert "id" in body["data"]
+
+    def test_create_match_with_competitors(self, api_client):
+        div_id = self._create_division(api_client)
+        c1 = self._create_competitor(api_client, div_id, "Alice")
+        c2 = self._create_competitor(api_client, div_id, "Bob")
+        resp = api_client.post(
+            "/api/v1/matches",
+            json={
+                "division_id": div_id,
+                "competitor1_id": c1,
+                "competitor2_id": c2,
+                "round_name": "Semi-Final",
+            },
+        )
+        assert resp.status_code == 201
+        data = resp.get_json()["data"]
+        assert data["competitor1_id"] == c1
+        assert data["competitor2_id"] == c2
+
+    def test_create_match_missing_division_id(self, api_client):
+        resp = api_client.post("/api/v1/matches", json={"round_name": "Final"})
+        assert resp.status_code == 400
+        assert resp.get_json()["error"]["code"] == "BAD_REQUEST"
+
+    def test_create_match_division_not_found(self, api_client):
+        resp = api_client.post("/api/v1/matches", json={"division_id": 9999})
+        assert resp.status_code == 404
+        assert resp.get_json()["error"]["code"] == "NOT_FOUND"
+
+    def test_create_match_invalid_ring_returns_404(self, api_client):
+        div_id = self._create_division(api_client)
+        resp = api_client.post("/api/v1/matches", json={"division_id": div_id, "ring_id": 9999})
+        assert resp.status_code == 404
+        assert resp.get_json()["error"]["code"] == "NOT_FOUND"
+
+    def test_create_match_invalid_competitor1_returns_404(self, api_client):
+        div_id = self._create_division(api_client)
+        resp = api_client.post("/api/v1/matches", json={"division_id": div_id, "competitor1_id": 9999})
+        assert resp.status_code == 404
+        assert resp.get_json()["error"]["code"] == "NOT_FOUND"
+
+    def test_create_match_invalid_competitor2_returns_404(self, api_client):
+        div_id = self._create_division(api_client)
+        c1 = self._create_competitor(api_client, div_id, "Alice")
+        resp = api_client.post("/api/v1/matches", json={"division_id": div_id, "competitor1_id": c1, "competitor2_id": 9999})
+        assert resp.status_code == 404
+        assert resp.get_json()["error"]["code"] == "NOT_FOUND"
+
+    def test_create_match_non_dict_body_returns_400(self, api_client):
+        resp = api_client.post("/api/v1/matches", json=[1, 2])
+        assert resp.status_code == 400
+        assert resp.get_json()["error"]["code"] == "BAD_REQUEST"
+
+    def test_create_match_non_json_content_type_returns_415(self, api_client):
+        resp = api_client.post("/api/v1/matches", data="division_id=1")
+        assert resp.status_code == 415
+
+    def test_list_matches_after_create(self, api_client):
+        div_id = self._create_division(api_client)
+        api_client.post("/api/v1/matches", json={"division_id": div_id, "round_name": "Round 1"})
+        api_client.post("/api/v1/matches", json={"division_id": div_id, "round_name": "Final"})
+        resp = api_client.get("/api/v1/matches")
+        body = resp.get_json()
+        assert len(body["data"]) == 2
+
+    def test_list_matches_filter_by_division(self, api_client):
+        div1 = self._create_division(api_client, "Div A")
+        div2 = self._create_division(api_client, "Div B")
+        api_client.post("/api/v1/matches", json={"division_id": div1, "round_name": "Final"})
+        api_client.post("/api/v1/matches", json={"division_id": div2, "round_name": "Final"})
+        resp = api_client.get(f"/api/v1/matches?division_id={div1}")
+        body = resp.get_json()
+        assert len(body["data"]) == 1
+        assert body["data"][0]["division_id"] == div1
+
+    def test_get_match(self, api_client):
+        div_id = self._create_division(api_client)
+        match_id = api_client.post("/api/v1/matches", json={"division_id": div_id, "round_name": "Final"}).get_json()["data"][
+            "id"
+        ]
+        resp = api_client.get(f"/api/v1/matches/{match_id}")
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["error"] is None
+        assert body["data"]["id"] == match_id
+        assert body["data"]["round_name"] == "Final"
+
+    def test_get_match_not_found(self, api_client):
+        resp = api_client.get("/api/v1/matches/9999")
+        assert resp.status_code == 404
+        assert resp.get_json()["error"]["code"] == "NOT_FOUND"
+
+    def test_patch_match_ring_id(self, api_client):
+        div_id = self._create_division(api_client)
+        ring_id = api_client.post("/api/v1/rings", json={"name": "Ring 1"}).get_json()["data"]["id"]
+        match_id = api_client.post("/api/v1/matches", json={"division_id": div_id}).get_json()["data"]["id"]
+        resp = api_client.patch(f"/api/v1/matches/{match_id}", json={"ring_id": ring_id})
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["error"] is None
+        assert body["data"]["ring_id"] == ring_id
+
+    def test_patch_match_status(self, api_client):
+        div_id = self._create_division(api_client)
+        match_id = api_client.post("/api/v1/matches", json={"division_id": div_id}).get_json()["data"]["id"]
+        resp = api_client.patch(f"/api/v1/matches/{match_id}", json={"status": "In Progress"})
+        assert resp.status_code == 200
+        assert resp.get_json()["data"]["status"] == "In Progress"
+
+    def test_patch_match_invalid_status_returns_400(self, api_client):
+        div_id = self._create_division(api_client)
+        match_id = api_client.post("/api/v1/matches", json={"division_id": div_id}).get_json()["data"]["id"]
+        resp = api_client.patch(f"/api/v1/matches/{match_id}", json={"status": "InvalidStatus"})
+        assert resp.status_code == 400
+        assert resp.get_json()["error"]["code"] == "BAD_REQUEST"
+
+    def test_patch_match_round_name(self, api_client):
+        div_id = self._create_division(api_client)
+        match_id = api_client.post("/api/v1/matches", json={"division_id": div_id, "round_name": "Round 1"}).get_json()["data"][
+            "id"
+        ]
+        resp = api_client.patch(f"/api/v1/matches/{match_id}", json={"round_name": "Semi-Final"})
+        assert resp.status_code == 200
+        assert resp.get_json()["data"]["round_name"] == "Semi-Final"
+
+    def test_patch_match_competitors(self, api_client):
+        div_id = self._create_division(api_client)
+        c1 = self._create_competitor(api_client, div_id, "Alice")
+        c2 = self._create_competitor(api_client, div_id, "Bob")
+        match_id = api_client.post("/api/v1/matches", json={"division_id": div_id}).get_json()["data"]["id"]
+        resp = api_client.patch(f"/api/v1/matches/{match_id}", json={"competitor1_id": c1, "competitor2_id": c2})
+        assert resp.status_code == 200
+        data = resp.get_json()["data"]
+        assert data["competitor1_id"] == c1
+        assert data["competitor2_id"] == c2
+
+    def test_patch_match_invalid_ring_returns_404(self, api_client):
+        div_id = self._create_division(api_client)
+        match_id = api_client.post("/api/v1/matches", json={"division_id": div_id}).get_json()["data"]["id"]
+        resp = api_client.patch(f"/api/v1/matches/{match_id}", json={"ring_id": 9999})
+        assert resp.status_code == 404
+        assert resp.get_json()["error"]["code"] == "NOT_FOUND"
+
+    def test_patch_match_invalid_competitor_returns_404(self, api_client):
+        div_id = self._create_division(api_client)
+        match_id = api_client.post("/api/v1/matches", json={"division_id": div_id}).get_json()["data"]["id"]
+        resp = api_client.patch(f"/api/v1/matches/{match_id}", json={"competitor1_id": 9999})
+        assert resp.status_code == 404
+        assert resp.get_json()["error"]["code"] == "NOT_FOUND"
+
+    def test_patch_match_not_found(self, api_client):
+        resp = api_client.patch("/api/v1/matches/9999", json={"status": "In Progress"})
+        assert resp.status_code == 404
+        assert resp.get_json()["error"]["code"] == "NOT_FOUND"
+
+    def test_patch_match_non_dict_body_returns_400(self, api_client):
+        div_id = self._create_division(api_client)
+        match_id = api_client.post("/api/v1/matches", json={"division_id": div_id}).get_json()["data"]["id"]
+        resp = api_client.patch(f"/api/v1/matches/{match_id}", json=["status", "Pending"])
+        assert resp.status_code == 400
+        assert resp.get_json()["error"]["code"] == "BAD_REQUEST"
+
+    def test_patch_match_non_json_content_type_returns_415(self, api_client):
+        div_id = self._create_division(api_client)
+        match_id = api_client.post("/api/v1/matches", json={"division_id": div_id}).get_json()["data"]["id"]
+        resp = api_client.patch(f"/api/v1/matches/{match_id}", data="status=Pending")
+        assert resp.status_code == 415
+
+    def test_match_response_shape(self, api_client):
+        div_id = self._create_division(api_client)
+        match_id = api_client.post("/api/v1/matches", json={"division_id": div_id, "round_name": "Final"}).get_json()["data"][
+            "id"
+        ]
+        body = api_client.get(f"/api/v1/matches/{match_id}").get_json()
+        data = body["data"]
+        for field in (
+            "id",
+            "division_id",
+            "ring_id",
+            "competitor1_id",
+            "competitor2_id",
+            "winner_id",
+            "next_match_id",
+            "match_number",
+            "status",
+            "round_name",
+            "start_time",
+            "end_time",
+        ):
+            assert field in data, f"Missing field: {field}"
