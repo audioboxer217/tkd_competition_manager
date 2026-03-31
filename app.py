@@ -1,22 +1,22 @@
-import hashlib
 import logging
 import math
 import os
-import secrets
 from collections import defaultdict
 from datetime import datetime, timezone
 from functools import wraps
 from urllib.parse import urljoin, urlparse
 
 from dotenv import load_dotenv
-from flask import Blueprint, Flask, Response, jsonify, make_response, redirect, render_template, request, session, url_for
-from flask_sqlalchemy import SQLAlchemy
+from flask import Flask, Response, jsonify, make_response, redirect, render_template, request, session, url_for
 from flask_wtf.csrf import CSRFProtect
 from markupsafe import escape
 from sqlalchemy import case
 from sqlalchemy.orm import joinedload
 from supabase import create_client
 from supabase_auth.errors import AuthApiError
+
+from api import _generate_raw_token, _hash_token, api_v1
+from models import COMPLETED_MATCH_STATUSES, VALID_EVENT_TYPES, ApiToken, Competitor, Division, Match, Ring, Score, db
 
 # Fetch variables
 load_dotenv()
@@ -36,11 +36,18 @@ if not SUPABASE_KEY:
     raise RuntimeError("SUPABASE_KEY environment variable must be set.")
 app = Flask(__name__)
 
-app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL") or f"postgresql+psycopg2://{USER}:{PASSWORD}@{HOST}:{PORT}/{DBNAME}?sslmode=require"
+app.config["SQLALCHEMY_DATABASE_URI"] = (
+    os.getenv("DATABASE_URL") or f"postgresql+psycopg2://{USER}:{PASSWORD}@{HOST}:{PORT}/{DBNAME}?sslmode=require"
+)
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SECRET_KEY"] = SECRET_KEY
-db = SQLAlchemy(app)
+db.init_app(app)
 csrf = CSRFProtect(app)
+
+# Exempt the API blueprint from CSRF.  Authentication is Bearer-token-based
+# (see `api_login_required`), so requests are not tied to the session cookie
+# and CSRF protection is not required.
+csrf.exempt(api_v1)
 
 supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
@@ -57,101 +64,6 @@ def login_required(f):
         return f(*args, **kwargs)
 
     return decorated_function
-
-
-class Ring(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(50), nullable=False)  # e.g., 'Ring 1'
-    matches = db.relationship("Match", backref="ring", lazy=True)
-    divisions = db.relationship("Division", backref="ring", lazy=True)
-
-
-VALID_EVENT_TYPES = {"poomsae", "kyorugi"}
-COMPLETED_MATCH_STATUSES = {"Completed", "Completed (Bye)", "Disqualification"}
-
-
-class Division(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False)  # e.g., 'Male - Black Belt - Under 70kg'
-    event_type = db.Column(db.String(20), nullable=False, default="kyorugi")  # 'poomsae' or 'kyorugi'
-    poomsae_style = db.Column(db.String(10), nullable=True)  # For poomsae: 'bracket' or 'group'; None = not yet set
-    ring_id = db.Column(db.Integer, db.ForeignKey("ring.id"), nullable=True)  # For poomsae: which ring is hosting this event
-    ring_sequence = db.Column(db.Integer, nullable=True)  # For poomsae: display order within the ring (1, 2, 3, ...)
-    event_status = db.Column(db.String(20), nullable=False, default="Pending")  # For poomsae: 'Pending', 'In Progress', 'Completed'
-
-    # Timing for group poomsae events: set when the division is started/completed
-    start_time = db.Column(db.DateTime(timezone=True), nullable=True)
-    end_time = db.Column(db.DateTime(timezone=True), nullable=True)
-
-    competitors = db.relationship("Competitor", backref="division", lazy=True)
-    matches = db.relationship("Match", backref="division", lazy=True)
-
-    __table_args__ = (db.Index("ix_division_ring_id", "ring_id"),)
-
-
-class Competitor(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False)
-    division_id = db.Column(db.Integer, db.ForeignKey("division.id"), nullable=False)
-    position = db.Column(db.Integer, nullable=True, default=None)
-
-
-class Match(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    division_id = db.Column(db.Integer, db.ForeignKey("division.id"), nullable=False)
-    ring_id = db.Column(db.Integer, db.ForeignKey("ring.id"), nullable=True)  # Nullable until scheduled
-
-    competitor1_id = db.Column(db.Integer, db.ForeignKey("competitor.id"), nullable=True)
-    competitor2_id = db.Column(db.Integer, db.ForeignKey("competitor.id"), nullable=True)
-    winner_id = db.Column(db.Integer, db.ForeignKey("competitor.id"), nullable=True)
-
-    # Tree structure for single-elimination
-    next_match_id = db.Column(db.Integer, db.ForeignKey("match.id"), nullable=True)
-    match_number = db.Column(db.Integer, nullable=True)  # E.g., 101, 525
-
-    # Status: 'Pending', 'In Progress', 'Completed', 'Disqualification'
-    status = db.Column(db.String(20), default="Pending")
-    round_name = db.Column(db.String(50))  # e.g., 'Quarter-Final', 'Semi-Final'
-
-    # Timing: set when match is started / completed
-    start_time = db.Column(db.DateTime(timezone=True), nullable=True)
-    end_time = db.Column(db.DateTime(timezone=True), nullable=True)
-
-    # Relationships
-    competitor1 = db.relationship("Competitor", foreign_keys=[competitor1_id])
-    competitor2 = db.relationship("Competitor", foreign_keys=[competitor2_id])
-    winner = db.relationship("Competitor", foreign_keys=[winner_id])
-
-    __table_args__ = (
-        db.Index("ix_match_division_id", "division_id"),
-        db.Index("ix_match_status", "status"),
-        db.Index("ix_match_division_status", "division_id", "status"),
-    )
-
-
-class Score(db.Model):
-    """Poomsae score for an individual competitor in a division."""
-
-    id = db.Column(db.Integer, primary_key=True)
-    competitor_id = db.Column(db.Integer, db.ForeignKey("competitor.id"), nullable=False)
-    division_id = db.Column(db.Integer, db.ForeignKey("division.id"), nullable=False)
-    score_value = db.Column(db.Float, nullable=False)
-
-    competitor = db.relationship("Competitor", foreign_keys=[competitor_id])
-
-    __table_args__ = (db.UniqueConstraint("competitor_id", "division_id", name="uq_score_competitor_division"),)
-
-
-class ApiToken(db.Model):
-    """Persistent API bearer token.  Only the SHA-256 hash is stored."""
-
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False)
-    token_hash = db.Column(db.String(64), nullable=False, unique=True)
-    is_active = db.Column(db.Boolean, nullable=False, default=True)
-    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
-    last_used_at = db.Column(db.DateTime(timezone=True), nullable=True)
-    user_id = db.Column(db.String(255), nullable=True)  # optional owner reference (e.g. Supabase user id)
 
 
 # --- RING MANAGEMENT ---
@@ -401,11 +313,7 @@ def login():
             if next_url:
                 host_url = urlparse(request.host_url)
                 test_url = urlparse(urljoin(request.host_url, next_url))
-                if (
-                    test_url.scheme in ("http", "https")
-                    and host_url.netloc == test_url.netloc
-                    and test_url.path
-                ):
+                if test_url.scheme in ("http", "https") and host_url.netloc == test_url.netloc and test_url.path:
                     safe_next = test_url.path
                 else:
                     safe_next = url_for("admin_view")
@@ -496,11 +404,7 @@ def _build_schedule_division_data(ring_filter, event_type_filter, search=""):
         # Compute the lowest sequence number among scheduled matches so the division
         # can be sorted correctly alongside group-based poomsae divisions.
         division_matches = grouped_by_division[division]
-        sequences = [
-            m.match_number % 100
-            for m in division_matches
-            if m.match_number is not None and m.ring_id is not None
-        ]
+        sequences = [m.match_number % 100 for m in division_matches if m.match_number is not None and m.ring_id is not None]
         min_sequence = min(sequences) if sequences else None
 
         division_data.append(
@@ -538,9 +442,7 @@ def _build_schedule_division_data(ring_filter, event_type_filter, search=""):
 
     if search:
         # Restrict to divisions that have at least one matching competitor.
-        group_query = group_query.filter(
-            Division.competitors.any(Competitor.name.ilike(f"%{search}%"))
-        )
+        group_query = group_query.filter(Division.competitors.any(Competitor.name.ilike(f"%{search}%")))
 
     group_divisions = group_query.all()
     for division in group_divisions:
@@ -707,11 +609,7 @@ def _build_bracket_display(matches):
 
 @app.route("/divisions/<int:div_id>/bracket_ui", methods=["GET"])
 def get_bracket_ui(div_id):
-    matches = (
-        Match.query.filter_by(division_id=div_id)
-        .order_by(Match.id)
-        .all()
-    )
+    matches = Match.query.filter_by(division_id=div_id).order_by(Match.id).all()
 
     if not matches:
         return render_template("_bracket_empty.html"), 404
@@ -794,9 +692,7 @@ def _compute_placements(matches):
 
     winner = db.session.get(Competitor, championship.winner_id)
     loser_id = (
-        championship.competitor2_id
-        if championship.winner_id == championship.competitor1_id
-        else championship.competitor1_id
+        championship.competitor2_id if championship.winner_id == championship.competitor1_id else championship.competitor1_id
     )
     loser = db.session.get(Competitor, loser_id) if loser_id else None
 
@@ -806,9 +702,7 @@ def _compute_placements(matches):
     # we correctly identify semifinals for all bracket sizes.
     for m in matches:
         if m.next_match_id == championship.id and m.status in completed_statuses and m.winner_id:
-            sf_loser_id = (
-                m.competitor2_id if m.winner_id == m.competitor1_id else m.competitor1_id
-            )
+            sf_loser_id = m.competitor2_id if m.winner_id == m.competitor1_id else m.competitor1_id
             sf_loser = db.session.get(Competitor, sf_loser_id) if sf_loser_id else None
             if sf_loser:
                 semi_losers.append(sf_loser.name)
@@ -849,19 +743,19 @@ def ui_public_rings():
         if last_completed:
             last_completed.comp_1 = (
                 f"{last_completed.competitor1.name.split()[0][0]}. {last_completed.competitor1.name.split()[-1]}"
-                if last_completed.competitor1 else "TBD"
+                if last_completed.competitor1
+                else "TBD"
             )
             last_completed.comp_2 = (
                 f"{last_completed.competitor2.name.split()[0][0]}. {last_completed.competitor2.name.split()[-1]}"
-                if last_completed.competitor2 else "TBD"
+                if last_completed.competitor2
+                else "TBD"
             )
             last_completed.comp_1_result = (
-                "W" if last_completed.winner_id == last_completed.competitor1_id
-                else ("L" if last_completed.winner_id else "-")
+                "W" if last_completed.winner_id == last_completed.competitor1_id else ("L" if last_completed.winner_id else "-")
             )
             last_completed.comp_2_result = (
-                "W" if last_completed.winner_id == last_completed.competitor2_id
-                else ("L" if last_completed.winner_id else "-")
+                "W" if last_completed.winner_id == last_completed.competitor2_id else ("L" if last_completed.winner_id else "-")
             )
             last_completed.round_short = _abbrev_round(last_completed.round_name)
 
@@ -1213,6 +1107,7 @@ def manage_bracket_page(div_id):
 
     return render_template("bracket_manage.html", division=division, rounds=sorted_rounds, rings=rings, current_ring=current_ring)
 
+
 @app.route("/ui/divisions/<int:div_id>/bracket_ring", methods=["PATCH"])
 @login_required
 def ui_bracket_ring_assignment(div_id):
@@ -1285,14 +1180,12 @@ def schedule_match_htmx(match_id):
         # (poomsae divisions share the 1-99 sequence pool with bracket matches)
         conflicting_division = None
         if event_type == "poomsae":
-            conflicting_division = (
-                Division.query.filter(
-                    Division.event_type == "poomsae",
-                    Division.ring_id == division_ring_id,
-                    Division.ring_sequence == ring_sequence_int,
-                    Division.id != match.division_id,
-                ).first()
-            )
+            conflicting_division = Division.query.filter(
+                Division.event_type == "poomsae",
+                Division.ring_id == division_ring_id,
+                Division.ring_sequence == ring_sequence_int,
+                Division.id != match.division_id,
+            ).first()
         if duplicate or conflicting_division:
             # Build a descriptive name for whatever is already using this slot
             if conflicting_division:
@@ -1439,6 +1332,7 @@ def ui_record_result(match_id):
 
 # --- POOMSAE ROUTES ---
 
+
 def _build_poomsae_ranked(div_id):
     """Return a list of (Competitor, Score|None) tuples for a division, ranked by score.
 
@@ -1446,10 +1340,7 @@ def _build_poomsae_ranked(div_id):
     follow in their roster order.
     """
     competitors = Competitor.query.filter_by(division_id=div_id).order_by(Competitor.position).all()
-    scores_by_comp = {
-        s.competitor_id: s
-        for s in Score.query.filter_by(division_id=div_id).all()
-    }
+    scores_by_comp = {s.competitor_id: s for s in Score.query.filter_by(division_id=div_id).all()}
     scored = sorted(
         [c for c in competitors if c.id in scores_by_comp],
         key=lambda c: scores_by_comp[c.id].score_value,
@@ -1537,13 +1428,9 @@ def ui_poomsae_ring_assignment(div_id):
                 Division.poomsae_style == "group",
             ).first()
             if conflicting_match or conflicting_div:
-                conflict_name = (
-                    escape(conflicting_match.division.name)
-                    if conflicting_match
-                    else escape(conflicting_div.name)
-                )
+                conflict_name = escape(conflicting_match.division.name) if conflicting_match else escape(conflicting_div.name)
                 db.session.rollback()
-                return f"Sequence {ring_sequence_int} is already used by \"{conflict_name}\" in this ring.", 400
+                return f'Sequence {ring_sequence_int} is already used by "{conflict_name}" in this ring.', 400
         division.ring_sequence = ring_sequence_int
     else:
         division.ring_sequence = None
@@ -1706,6 +1593,7 @@ def ui_ring_poomsae_divisions(ring_id):
 # Admin — API token management
 # ---------------------------------------------------------------------------
 
+
 @app.route("/admin/api-tokens", methods=["GET"])
 @login_required
 def admin_api_tokens():
@@ -1729,9 +1617,7 @@ def admin_create_api_token():
     db.session.add(api_token)
     db.session.commit()
     tokens = ApiToken.query.order_by(ApiToken.created_at.desc()).all()
-    response = make_response(
-        render_template("admin_api_tokens.html", tokens=tokens, new_token=raw_token, new_token_name=name)
-    )
+    response = make_response(render_template("admin_api_tokens.html", tokens=tokens, new_token=raw_token, new_token_name=name))
     response.headers["Cache-Control"] = "no-store"
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
@@ -1744,645 +1630,13 @@ def admin_revoke_api_token(token_id):
     """Revoke (deactivate) an API token by setting is_active=False."""
     api_token = db.session.get(ApiToken, token_id)
     if api_token is None:
-        return render_template("admin_api_tokens.html",
-                               tokens=ApiToken.query.order_by(ApiToken.created_at.desc()).all(),
-                               error="Token not found."), 404
+        return render_template(
+            "admin_api_tokens.html", tokens=ApiToken.query.order_by(ApiToken.created_at.desc()).all(), error="Token not found."
+        ), 404
     api_token.is_active = False
     db.session.commit()
     tokens = ApiToken.query.order_by(ApiToken.created_at.desc()).all()
     return render_template("admin_api_tokens.html", tokens=tokens)
-
-
-# ---------------------------------------------------------------------------
-# API v1 Blueprint
-# ---------------------------------------------------------------------------
-
-api_v1 = Blueprint("api_v1", __name__, url_prefix="/api/v1")
-
-# Exempt the API blueprint from CSRF.  Authentication is Bearer-token-based
-# (see `api_login_required`), so requests are not tied to the session cookie
-# and CSRF protection is not required.
-csrf.exempt(api_v1)
-
-
-# --- Response helpers ---
-
-def success_response(data, status_code=200):
-    """Return a consistent success JSON envelope: {"data": ..., "error": null}."""
-    return jsonify({"data": data, "error": None}), status_code
-
-
-def error_response(code, message, details=None, status_code=400):
-    """Return a consistent error JSON envelope.
-
-    {"data": null, "error": {"code": "...", "message": "...", "details": {...}}}
-    """
-    return jsonify({"data": None, "error": {"code": code, "message": message, "details": details or {}}}), status_code
-
-
-# --- API-specific auth decorator (Bearer token, returns JSON 401, never redirects) ---
-
-def _generate_raw_token() -> str:
-    """Generate a cryptographically secure, URL-safe token string (32 bytes → 43 chars)."""
-    return secrets.token_urlsafe(32)
-
-
-def _hash_token(raw_token: str) -> str:
-    """Return the hex SHA-256 digest of *raw_token*."""
-    return hashlib.sha256(raw_token.encode()).hexdigest()
-
-
-def api_login_required(f):
-    """Require a valid API bearer token stored in the ApiToken table.
-
-    Extracts the token from ``Authorization: Bearer <token>``, hashes it, and
-    looks it up in the database.  Returns a JSON 401 envelope on failure —
-    never redirects.  Updates ``last_used_at`` on every successful request.
-    """
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        auth_header = request.headers.get("Authorization", "")
-        if not auth_header.startswith("Bearer "):
-            return error_response(
-                "UNAUTHORIZED",
-                "Authorization header with Bearer token is required.",
-                status_code=401,
-            )
-        raw_token = auth_header[len("Bearer "):]
-        token_hash = _hash_token(raw_token)
-        api_token = ApiToken.query.filter_by(token_hash=token_hash, is_active=True).first()
-        if api_token is None:
-            return error_response("UNAUTHORIZED", "Invalid or revoked token.", status_code=401)
-        api_token.last_used_at = datetime.now(timezone.utc)
-        db.session.commit()
-        return f(*args, **kwargs)
-    return decorated_function
-
-
-# --- Enforce JSON Content-Type on mutating requests ---
-
-@api_v1.before_request
-def enforce_json_content_type():
-    """Reject POST/PUT/PATCH requests whose Content-Type is not application/json."""
-    if request.method in ("POST", "PUT", "PATCH"):
-        if not request.is_json:
-            return error_response(
-                "UNSUPPORTED_MEDIA_TYPE",
-                "Content-Type must be application/json.",
-                status_code=415,
-            )
-
-
-# --- Blueprint-level error handlers ---
-
-@api_v1.errorhandler(400)
-def api_bad_request(e):
-    return error_response("BAD_REQUEST", str(e), status_code=400)
-
-
-@api_v1.errorhandler(401)
-def api_unauthorized(e):
-    return error_response("UNAUTHORIZED", str(e), status_code=401)
-
-
-@api_v1.errorhandler(404)
-def api_not_found(e):
-    return error_response("NOT_FOUND", str(e), status_code=404)
-
-
-@api_v1.errorhandler(409)
-def api_conflict(e):
-    return error_response("CONFLICT", str(e), status_code=409)
-
-
-@api_v1.errorhandler(422)
-def api_unprocessable(e):
-    return error_response("UNPROCESSABLE_ENTITY", str(e), status_code=422)
-
-
-@api_v1.errorhandler(500)
-def api_internal_error(e):
-    logging.exception("Unhandled exception in /api/v1", exc_info=(type(e), e, e.__traceback__))
-    return error_response("INTERNAL_SERVER_ERROR", "An internal server error occurred.", status_code=500)
-
-
-# --- /api/v1/rings ---
-
-@api_v1.route("/rings", methods=["GET"])
-@api_login_required
-def api_list_rings():
-    rings = Ring.query.all()
-    return success_response([{"id": r.id, "name": r.name} for r in rings])
-
-
-@api_v1.route("/rings", methods=["POST"])
-@api_login_required
-def api_create_ring():
-    data = request.get_json()
-    if not isinstance(data, dict):
-        return error_response("BAD_REQUEST", "Request JSON body must be an object.", status_code=400)
-    name = (data.get("name") or "").strip()
-    if not name:
-        return error_response("BAD_REQUEST", "Ring name is required.", status_code=400)
-    new_ring = Ring(name=name)
-    db.session.add(new_ring)
-    db.session.commit()
-    return success_response({"id": new_ring.id, "name": new_ring.name}, status_code=201)
-
-
-@api_v1.route("/rings/<int:ring_id>", methods=["GET"])
-@api_login_required
-def api_get_ring(ring_id):
-    ring = db.session.get(Ring, ring_id)
-    if not ring:
-        return error_response("NOT_FOUND", f"Ring {ring_id} not found.", status_code=404)
-    return success_response({"id": ring.id, "name": ring.name})
-
-
-@api_v1.route("/rings/<int:ring_id>", methods=["PATCH"])
-@api_login_required
-def api_update_ring(ring_id):
-    ring = db.session.get(Ring, ring_id)
-    if not ring:
-        return error_response("NOT_FOUND", f"Ring {ring_id} not found.", status_code=404)
-    data = request.get_json()
-    if not isinstance(data, dict):
-        return error_response("BAD_REQUEST", "Request JSON body must be an object.", status_code=400)
-    if "name" in data:
-        new_name = (data.get("name") or "").strip()
-        if not new_name:
-            return error_response("BAD_REQUEST", "Ring name is required.", status_code=400)
-        ring.name = new_name
-    db.session.commit()
-    return success_response({"id": ring.id, "name": ring.name})
-
-
-@api_v1.route("/rings/<int:ring_id>", methods=["DELETE"])
-@api_login_required
-def api_delete_ring(ring_id):
-    ring = db.session.get(Ring, ring_id)
-    if not ring:
-        return error_response("NOT_FOUND", f"Ring {ring_id} not found.", status_code=404)
-    db.session.delete(ring)
-    db.session.commit()
-    return success_response({"id": ring_id, "deleted": True})
-
-
-# --- /api/v1/divisions ---
-
-@api_v1.route("/divisions", methods=["GET"])
-@api_login_required
-def api_list_divisions():
-    divisions = Division.query.all()
-    return success_response([{"id": d.id, "name": d.name, "event_type": d.event_type} for d in divisions])
-
-
-@api_v1.route("/divisions", methods=["POST"])
-@api_login_required
-def api_create_division():
-    data = request.get_json()
-    if not isinstance(data, dict):
-        return error_response("BAD_REQUEST", "Request JSON body must be an object.", status_code=400)
-    name = (data.get("name") or "").strip()
-    if not name:
-        return error_response("BAD_REQUEST", "Division name is required.", status_code=400)
-    event_type = data.get("event_type", "kyorugi")
-    if event_type not in VALID_EVENT_TYPES:
-        return error_response(
-            "BAD_REQUEST",
-            "Invalid event type.",
-            details={"valid_values": sorted(VALID_EVENT_TYPES)},
-            status_code=400,
-        )
-    new_division = Division(name=name, event_type=event_type)
-    db.session.add(new_division)
-    db.session.commit()
-    return success_response(
-        {"id": new_division.id, "name": new_division.name, "event_type": new_division.event_type},
-        status_code=201,
-    )
-
-
-@api_v1.route("/divisions/<int:div_id>", methods=["GET"])
-@api_login_required
-def api_get_division(div_id):
-    division = db.session.get(Division, div_id)
-    if not division:
-        return error_response("NOT_FOUND", f"Division {div_id} not found.", status_code=404)
-    return success_response({"id": division.id, "name": division.name, "event_type": division.event_type})
-
-
-@api_v1.route("/divisions/<int:div_id>", methods=["PUT", "PATCH"])
-@api_login_required
-def api_update_division(div_id):
-    division = db.session.get(Division, div_id)
-    if not division:
-        return error_response("NOT_FOUND", f"Division {div_id} not found.", status_code=404)
-    data = request.get_json()
-    if not isinstance(data, dict):
-        return error_response("BAD_REQUEST", "Request JSON body must be an object.", status_code=400)
-    new_name = (data.get("name") or "").strip()
-    if not new_name:
-        return error_response("BAD_REQUEST", "Division name is required.", status_code=400)
-    division.name = new_name
-    db.session.commit()
-    return success_response({"id": division.id, "name": division.name, "event_type": division.event_type})
-
-
-@api_v1.route("/divisions/<int:div_id>", methods=["DELETE"])
-@api_login_required
-def api_delete_division(div_id):
-    division = db.session.get(Division, div_id)
-    if not division:
-        return error_response("NOT_FOUND", f"Division {div_id} not found.", status_code=404)
-    db.session.delete(division)
-    db.session.commit()
-    return success_response({"id": div_id, "deleted": True})
-
-
-# --- /api/v1/divisions/<id>/bracket ---
-
-@api_v1.route("/divisions/<int:div_id>/bracket", methods=["GET"])
-@api_login_required
-def api_get_bracket(div_id):
-    division = db.session.get(Division, div_id)
-    if not division:
-        return error_response("NOT_FOUND", f"Division {div_id} not found.", status_code=404)
-    matches = Match.query.filter_by(division_id=div_id).all()
-    if not matches:
-        return error_response("NOT_FOUND", "No bracket found for this division.", status_code=404)
-
-    # Bulk-load all competitors referenced in this division's matches to avoid N+1 queries.
-    competitor_ids = {
-        comp_id
-        for m in matches
-        for comp_id in (m.competitor1_id, m.competitor2_id)
-        if comp_id is not None
-    }
-    comp_map = {}
-    if competitor_ids:
-        comps = Competitor.query.filter(Competitor.id.in_(competitor_ids)).all()
-        comp_map = {c.id: {"id": c.id, "name": c.name} for c in comps}
-
-    def _comp_data(comp_id):
-        if not comp_id:
-            return None
-        return comp_map.get(comp_id)
-
-    bracket_data = [
-        {
-            "match_id": m.id,
-            "round_name": m.round_name,
-            "status": m.status,
-            "ring_id": m.ring_id,
-            "next_match_id": m.next_match_id,
-            "competitor1": _comp_data(m.competitor1_id),
-            "competitor2": _comp_data(m.competitor2_id),
-            "winner_id": m.winner_id,
-        }
-        for m in matches
-    ]
-    return success_response(bracket_data)
-
-
-# --- /api/v1/competitors ---
-
-
-@api_v1.route("/competitors", methods=["GET"])
-@api_login_required
-def api_list_competitors():
-    division_id = request.args.get("division_id", type=int)
-    query = Competitor.query
-    if division_id is not None:
-        query = query.filter_by(division_id=division_id)
-    competitors = query.all()
-    return success_response(
-        [{"id": c.id, "name": c.name, "division_id": c.division_id, "position": c.position} for c in competitors]
-    )
-
-
-@api_v1.route("/competitors", methods=["POST"])
-@api_login_required
-def api_create_competitor():
-    data = request.get_json()
-    if not isinstance(data, dict):
-        return error_response("BAD_REQUEST", "Request JSON body must be an object.", status_code=400)
-    name = (data.get("name") or "").strip()
-    if not name:
-        return error_response("BAD_REQUEST", "Competitor name is required.", status_code=400)
-    raw_division_id = data.get("division_id")
-    if raw_division_id is None:
-        return error_response("BAD_REQUEST", "division_id is required.", status_code=400)
-    try:
-        division_id = int(raw_division_id)
-    except (TypeError, ValueError):
-        return error_response("BAD_REQUEST", "division_id must be an integer.", status_code=400)
-    division = db.session.get(Division, division_id)
-    if not division:
-        return error_response("NOT_FOUND", f"Division {division_id} not found.", status_code=404)
-    raw_position = data.get("position")
-    position = None
-    if raw_position is not None:
-        try:
-            position = int(raw_position)
-        except (TypeError, ValueError):
-            return error_response("BAD_REQUEST", "position must be an integer.", status_code=400)
-    new_competitor = Competitor(name=name, division_id=division_id, position=position)
-    db.session.add(new_competitor)
-    db.session.commit()
-    return success_response(
-        {
-            "id": new_competitor.id,
-            "name": new_competitor.name,
-            "division_id": new_competitor.division_id,
-            "position": new_competitor.position,
-        },
-        status_code=201,
-    )
-
-
-@api_v1.route("/competitors/<int:competitor_id>", methods=["GET"])
-@api_login_required
-def api_get_competitor(competitor_id):
-    competitor = db.session.get(Competitor, competitor_id)
-    if not competitor:
-        return error_response("NOT_FOUND", f"Competitor {competitor_id} not found.", status_code=404)
-    return success_response(
-        {"id": competitor.id, "name": competitor.name, "division_id": competitor.division_id, "position": competitor.position}
-    )
-
-
-@api_v1.route("/competitors/<int:competitor_id>", methods=["PATCH"])
-@api_login_required
-def api_update_competitor(competitor_id):
-    competitor = db.session.get(Competitor, competitor_id)
-    if not competitor:
-        return error_response("NOT_FOUND", f"Competitor {competitor_id} not found.", status_code=404)
-    data = request.get_json()
-    if not isinstance(data, dict):
-        return error_response("BAD_REQUEST", "Request JSON body must be an object.", status_code=400)
-    if "name" in data:
-        new_name = (data.get("name") or "").strip()
-        if not new_name:
-            return error_response("BAD_REQUEST", "Competitor name is required.", status_code=400)
-        competitor.name = new_name
-    if "division_id" in data:
-        new_division_id = data.get("division_id")
-        if not new_division_id:
-            return error_response("BAD_REQUEST", "division_id must be a valid integer.", status_code=400)
-        division = db.session.get(Division, new_division_id)
-        if not division:
-            return error_response("NOT_FOUND", f"Division {new_division_id} not found.", status_code=404)
-        competitor.division_id = new_division_id
-    if "position" in data:
-        competitor.position = data.get("position")
-    db.session.commit()
-    return success_response(
-        {"id": competitor.id, "name": competitor.name, "division_id": competitor.division_id, "position": competitor.position}
-    )
-
-
-@api_v1.route("/competitors/<int:competitor_id>", methods=["DELETE"])
-@api_login_required
-def api_delete_competitor(competitor_id):
-    competitor = db.session.get(Competitor, competitor_id)
-    if not competitor:
-        return error_response("NOT_FOUND", f"Competitor {competitor_id} not found.", status_code=404)
-    db.session.delete(competitor)
-    db.session.commit()
-    return success_response({"id": competitor_id, "deleted": True})
-
-
-# --- /api/v1/matches ---
-
-
-def _match_to_dict(m):
-    """Serialize a Match instance to a dictionary."""
-    return {
-        "id": m.id,
-        "division_id": m.division_id,
-        "ring_id": m.ring_id,
-        "competitor1_id": m.competitor1_id,
-        "competitor2_id": m.competitor2_id,
-        "winner_id": m.winner_id,
-        "next_match_id": m.next_match_id,
-        "match_number": m.match_number,
-        "status": m.status,
-        "round_name": m.round_name,
-        "start_time": m.start_time.isoformat() if m.start_time else None,
-        "end_time": m.end_time.isoformat() if m.end_time else None,
-    }
-
-
-@api_v1.route("/matches", methods=["GET"])
-@api_login_required
-def api_list_matches():
-    division_id = request.args.get("division_id", type=int)
-    query = Match.query
-    if division_id is not None:
-        query = query.filter_by(division_id=division_id)
-    matches = query.all()
-    return success_response([_match_to_dict(m) for m in matches])
-
-
-@api_v1.route("/matches", methods=["POST"])
-@api_login_required
-def api_create_match():
-    data = request.get_json()
-    if not isinstance(data, dict):
-        return error_response("BAD_REQUEST", "Request JSON body must be an object.", status_code=400)
-    division_id = data.get("division_id")
-    if not division_id:
-        return error_response("BAD_REQUEST", "division_id is required.", status_code=400)
-    division = db.session.get(Division, division_id)
-    if not division:
-        return error_response("NOT_FOUND", f"Division {division_id} not found.", status_code=404)
-    ring_id = data.get("ring_id")
-    if ring_id is not None and not db.session.get(Ring, ring_id):
-        return error_response("NOT_FOUND", f"Ring {ring_id} not found.", status_code=404)
-    competitor1_id = data.get("competitor1_id")
-    competitor1 = None
-    if competitor1_id is not None:
-        competitor1 = db.session.get(Competitor, competitor1_id)
-        if not competitor1:
-            return error_response("NOT_FOUND", f"Competitor {competitor1_id} not found.", status_code=404)
-        if competitor1.division_id != division_id:
-            return error_response(
-                "BAD_REQUEST",
-                f"Competitor {competitor1_id} does not belong to division {division_id}.",
-                status_code=400,
-            )
-    competitor2_id = data.get("competitor2_id")
-    competitor2 = None
-    if competitor2_id is not None:
-        competitor2 = db.session.get(Competitor, competitor2_id)
-        if not competitor2:
-            return error_response("NOT_FOUND", f"Competitor {competitor2_id} not found.", status_code=404)
-        if competitor2.division_id != division_id:
-            return error_response(
-                "BAD_REQUEST",
-                f"Competitor {competitor2_id} does not belong to division {division_id}.",
-                status_code=400,
-            )
-    if competitor1_id is not None and competitor2_id is not None and competitor1_id == competitor2_id:
-        return error_response(
-            "BAD_REQUEST",
-            "competitor1_id and competitor2_id must refer to different competitors.",
-            status_code=400,
-        )
-    next_match_id = data.get("next_match_id")
-    if next_match_id is not None and not db.session.get(Match, next_match_id):
-        return error_response("NOT_FOUND", f"Match {next_match_id} not found.", status_code=404)
-    round_name = (data.get("round_name") or "").strip() or None
-    match_number = data.get("match_number")
-    new_match = Match(
-        division_id=division_id,
-        ring_id=ring_id,
-        competitor1_id=competitor1_id,
-        competitor2_id=competitor2_id,
-        next_match_id=next_match_id,
-        round_name=round_name,
-        match_number=match_number,
-    )
-    db.session.add(new_match)
-    db.session.commit()
-    return success_response(_match_to_dict(new_match), status_code=201)
-
-
-@api_v1.route("/matches/<int:match_id>", methods=["GET"])
-@api_login_required
-def api_get_match(match_id):
-    match = db.session.get(Match, match_id)
-    if not match:
-        return error_response("NOT_FOUND", f"Match {match_id} not found.", status_code=404)
-    return success_response(_match_to_dict(match))
-
-
-@api_v1.route("/matches/<int:match_id>", methods=["PATCH"])
-@api_login_required
-def api_update_match(match_id):
-    match = db.session.get(Match, match_id)
-    if not match:
-        return error_response("NOT_FOUND", f"Match {match_id} not found.", status_code=404)
-    data = request.get_json()
-    if not isinstance(data, dict):
-        return error_response("BAD_REQUEST", "Request JSON body must be an object.", status_code=400)
-    if "ring_id" in data:
-        ring_id = data.get("ring_id")
-        if ring_id is not None and not db.session.get(Ring, ring_id):
-            return error_response("NOT_FOUND", f"Ring {ring_id} not found.", status_code=404)
-        match.ring_id = ring_id
-    if "status" in data:
-        new_status = data.get("status")
-        valid_statuses = {"Pending", "In Progress", "Completed", "Disqualification", "Completed (Bye)"}
-        if new_status not in valid_statuses:
-            return error_response(
-                "BAD_REQUEST",
-                "Invalid status.",
-                details={"valid_values": sorted(valid_statuses)},
-                status_code=400,
-            )
-        terminal_statuses = {"Completed", "Disqualification", "Completed (Bye)"}
-        if new_status in terminal_statuses:
-            return error_response(
-                "BAD_REQUEST",
-                "Cannot set a terminal status via PATCH. Use the /matches/<id>/result endpoint to complete a match.",
-                details={"allowed_statuses": sorted(valid_statuses - terminal_statuses)},
-                status_code=400,
-            )
-        match.status = new_status
-    if "round_name" in data:
-        match.round_name = (data.get("round_name") or "").strip() or None
-    if "match_number" in data:
-        match.match_number = data.get("match_number")
-    # Prepare new competitor IDs so we can validate before assigning
-    new_competitor1_id = match.competitor1_id
-    new_competitor2_id = match.competitor2_id
-    if "competitor1_id" in data:
-        competitor1_id = data.get("competitor1_id")
-        if competitor1_id is not None:
-            competitor1 = db.session.get(Competitor, competitor1_id)
-            if not competitor1:
-                return error_response("NOT_FOUND", f"Competitor {competitor1_id} not found.", status_code=404)
-            if competitor1.division_id != match.division_id:
-                return error_response(
-                    "BAD_REQUEST",
-                    f"Competitor {competitor1_id} does not belong to this match's division.",
-                    status_code=400,
-                )
-        new_competitor1_id = competitor1_id
-    if "competitor2_id" in data:
-        competitor2_id = data.get("competitor2_id")
-        if competitor2_id is not None:
-            competitor2 = db.session.get(Competitor, competitor2_id)
-            if not competitor2:
-                return error_response("NOT_FOUND", f"Competitor {competitor2_id} not found.", status_code=404)
-            if competitor2.division_id != match.division_id:
-                return error_response(
-                    "BAD_REQUEST",
-                    f"Competitor {competitor2_id} does not belong to this match's division.",
-                    status_code=400,
-                )
-        new_competitor2_id = competitor2_id
-    # Ensure the two competitors are not the same when both are set
-    if new_competitor1_id is not None and new_competitor2_id is not None:
-        if new_competitor1_id == new_competitor2_id:
-            return error_response(
-                "BAD_REQUEST",
-                "competitor1_id and competitor2_id must refer to different competitors.",
-                status_code=400,
-            )
-    match.competitor1_id = new_competitor1_id
-    match.competitor2_id = new_competitor2_id
-    db.session.commit()
-    return success_response(_match_to_dict(match))
-
-
-@api_v1.route("/matches/<int:match_id>/result", methods=["POST"])
-@api_login_required
-def api_record_result(match_id):
-    match = db.session.get(Match, match_id)
-    if not match:
-        return error_response("NOT_FOUND", f"Match {match_id} not found.", status_code=404)
-
-    data = request.get_json()
-    if not isinstance(data, dict):
-        return error_response("BAD_REQUEST", "Request JSON body must be an object.", status_code=400)
-    status = data.get("status")
-    winner_id = data.get("winner_id")
-
-    valid_statuses = {"Completed", "Disqualification"}
-    if status not in valid_statuses:
-        return error_response(
-            "BAD_REQUEST",
-            "Invalid status.",
-            details={"valid_values": sorted(valid_statuses)},
-            status_code=400,
-        )
-    if not winner_id:
-        return error_response("BAD_REQUEST", "winner_id is required.", status_code=400)
-
-    valid_competitors = {match.competitor1_id, match.competitor2_id} - {None}
-    if winner_id not in valid_competitors:
-        return error_response(
-            "BAD_REQUEST",
-            "winner_id must be a participant in this match.",
-            details={"valid_winner_ids": sorted(valid_competitors)},
-            status_code=400,
-        )
-
-    match.status = status
-    match.winner_id = winner_id
-
-    if match.next_match_id:
-        next_match = db.session.get(Match, match.next_match_id)
-        if not next_match.competitor1_id:
-            next_match.competitor1_id = winner_id
-        elif not next_match.competitor2_id:
-            next_match.competitor2_id = winner_id
-
-    db.session.commit()
-    return success_response({"match_id": match_id, "status": match.status, "winner_id": match.winner_id})
 
 
 # Register the API v1 blueprint
