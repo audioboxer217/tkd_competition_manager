@@ -1,6 +1,8 @@
+import hashlib
 import logging
 import math
 import os
+import secrets
 from collections import defaultdict
 from datetime import datetime, timezone
 from functools import wraps
@@ -138,6 +140,20 @@ class Score(db.Model):
     competitor = db.relationship("Competitor", foreign_keys=[competitor_id])
 
     __table_args__ = (db.UniqueConstraint("competitor_id", "division_id", name="uq_score_competitor_division"),)
+
+
+class ApiToken(db.Model):
+    """Persistent API bearer token.  Only the SHA-256 hash is stored."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    token_hash = db.Column(db.String(64), nullable=False, unique=True)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    last_used_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    user_id = db.Column(db.String(255), nullable=True)  # optional owner reference (e.g. Supabase user id)
+
+    __table_args__ = (db.Index("ix_api_token_hash", "token_hash"),)
 
 
 # --- RING MANAGEMENT ---
@@ -1689,6 +1705,51 @@ def ui_ring_poomsae_divisions(ring_id):
 
 
 # ---------------------------------------------------------------------------
+# Admin — API token management
+# ---------------------------------------------------------------------------
+
+@app.route("/admin/api-tokens", methods=["GET"])
+@login_required
+def admin_api_tokens():
+    """List all API tokens (hashes hidden; name, status, dates visible)."""
+    tokens = ApiToken.query.order_by(ApiToken.created_at.desc()).all()
+    return render_template("admin_api_tokens.html", tokens=tokens)
+
+
+@app.route("/admin/api-tokens", methods=["POST"])
+@login_required
+def admin_create_api_token():
+    """Generate a new API token.  The plaintext is shown **once** and never stored."""
+    name = (request.form.get("name") or "").strip()
+    if not name:
+        tokens = ApiToken.query.order_by(ApiToken.created_at.desc()).all()
+        return render_template("admin_api_tokens.html", tokens=tokens, error="Token name is required."), 422
+    raw_token = _generate_raw_token()
+    token_hash = _hash_token(raw_token)
+    user = session.get("user") or {}
+    api_token = ApiToken(name=name, token_hash=token_hash, user_id=user.get("id"))
+    db.session.add(api_token)
+    db.session.commit()
+    tokens = ApiToken.query.order_by(ApiToken.created_at.desc()).all()
+    return render_template("admin_api_tokens.html", tokens=tokens, new_token=raw_token, new_token_name=name)
+
+
+@app.route("/admin/api-tokens/<int:token_id>/revoke", methods=["POST"])
+@login_required
+def admin_revoke_api_token(token_id):
+    """Revoke (deactivate) an API token by setting is_active=False."""
+    api_token = db.session.get(ApiToken, token_id)
+    if api_token is None:
+        return render_template("admin_api_tokens.html",
+                               tokens=ApiToken.query.order_by(ApiToken.created_at.desc()).all(),
+                               error="Token not found."), 404
+    api_token.is_active = False
+    db.session.commit()
+    tokens = ApiToken.query.order_by(ApiToken.created_at.desc()).all()
+    return render_template("admin_api_tokens.html", tokens=tokens)
+
+
+# ---------------------------------------------------------------------------
 # API v1 Blueprint
 # ---------------------------------------------------------------------------
 
@@ -1717,11 +1778,22 @@ def error_response(code, message, details=None, status_code=400):
 
 # --- API-specific auth decorator (Bearer token, returns JSON 401, never redirects) ---
 
-def api_login_required(f):
-    """Require a valid Supabase Bearer token in the Authorization header.
+def _generate_raw_token() -> str:
+    """Generate a cryptographically secure, URL-safe token string (32 bytes → 43 chars)."""
+    return secrets.token_urlsafe(32)
 
-    Extracts the token from ``Authorization: Bearer <token>``, validates it
-    with Supabase, and returns a JSON 401 envelope on failure — never redirects.
+
+def _hash_token(raw_token: str) -> str:
+    """Return the hex SHA-256 digest of *raw_token*."""
+    return hashlib.sha256(raw_token.encode()).hexdigest()
+
+
+def api_login_required(f):
+    """Require a valid API bearer token stored in the ApiToken table.
+
+    Extracts the token from ``Authorization: Bearer <token>``, hashes it, and
+    looks it up in the database.  Returns a JSON 401 envelope on failure —
+    never redirects.  Updates ``last_used_at`` on every successful request.
     """
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -1732,11 +1804,13 @@ def api_login_required(f):
                 "Authorization header with Bearer token is required.",
                 status_code=401,
             )
-        token = auth_header[len("Bearer "):]
-        try:
-            supabase_client.auth.get_user(token)
-        except Exception:
-            return error_response("UNAUTHORIZED", "Invalid or expired token.", status_code=401)
+        raw_token = auth_header[len("Bearer "):]
+        token_hash = _hash_token(raw_token)
+        api_token = ApiToken.query.filter_by(token_hash=token_hash, is_active=True).first()
+        if api_token is None:
+            return error_response("UNAUTHORIZED", "Invalid or revoked token.", status_code=401)
+        api_token.last_used_at = datetime.now(timezone.utc)
+        db.session.commit()
         return f(*args, **kwargs)
     return decorated_function
 

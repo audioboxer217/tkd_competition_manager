@@ -5139,13 +5139,22 @@ class TestApiV1Auth:
             assert resp.status_code == 401
             assert resp.get_json()["error"]["code"] == "UNAUTHORIZED"
 
-    def test_invalid_bearer_token_returns_json_401(self, app, monkeypatch):
-        """An expired / invalid token causes Supabase to raise; response is 401."""
-        def _reject(_token):
-            raise Exception("invalid token")
-        monkeypatch.setattr("app.supabase_client.auth.get_user", _reject)
+    def test_invalid_bearer_token_returns_json_401(self, app):
+        """A token not present in the database is rejected with 401."""
         with app.test_client() as c:
-            resp = c.get("/api/v1/rings", headers={"Authorization": "Bearer bad-token"})
+            resp = c.get("/api/v1/rings", headers={"Authorization": "Bearer not-a-real-token"})
+            assert resp.status_code == 401
+            assert resp.get_json()["error"]["code"] == "UNAUTHORIZED"
+
+    def test_revoked_token_returns_json_401(self, app):
+        """A revoked (is_active=False) token is rejected with 401."""
+        from app import ApiToken, _generate_raw_token, _hash_token, db
+        raw = _generate_raw_token()
+        token = ApiToken(name="revoked", token_hash=_hash_token(raw), is_active=False)
+        db.session.add(token)
+        db.session.commit()
+        with app.test_client() as c:
+            resp = c.get("/api/v1/rings", headers={"Authorization": f"Bearer {raw}"})
             assert resp.status_code == 401
             assert resp.get_json()["error"]["code"] == "UNAUTHORIZED"
 
@@ -5154,10 +5163,24 @@ class TestApiV1Auth:
         resp = api_client.get("/api/v1/rings")
         assert resp.status_code == 200
 
+    def test_valid_token_updates_last_used_at(self, app):
+        """Successful API requests update the token's last_used_at timestamp."""
+        from app import ApiToken, _generate_raw_token, _hash_token, db
+        raw = _generate_raw_token()
+        token = ApiToken(name="ts-check", token_hash=_hash_token(raw))
+        db.session.add(token)
+        db.session.commit()
+        assert token.last_used_at is None
+        with app.test_client() as c:
+            c.get("/api/v1/rings", headers={"Authorization": f"Bearer {raw}"})
+        db.session.refresh(token)
+        assert token.last_used_at is not None
+
     def test_unauthenticated_post_returns_json_401(self, app):
         with app.test_client() as c:
             resp = c.post("/api/v1/rings", json={"name": "R1"})
             assert resp.status_code == 401
+
 
 
 # ---------------------------------------------------------------------------
@@ -5507,3 +5530,56 @@ class TestLegacyRoutesUntouched:
         # Legacy uses {"message": ..., "id": ...}, not the v1 envelope
         assert "message" in body
         assert body["message"] == "Ring created"
+
+
+# ---------------------------------------------------------------------------
+# Admin — API token management routes
+# ---------------------------------------------------------------------------
+
+
+class TestAdminApiTokens:
+    def test_list_tokens_page_requires_login(self, app):
+        with app.test_client() as c:
+            resp = c.get("/admin/api-tokens")
+            assert resp.status_code == 302
+
+    def test_list_tokens_page_renders(self, client):
+        resp = client.get("/admin/api-tokens")
+        assert resp.status_code == 200
+        assert b"API Token Management" in resp.data
+
+    def test_create_token_returns_plaintext_once(self, client):
+        resp = client.post("/admin/api-tokens", data={"name": "CI token"})
+        assert resp.status_code == 200
+        # Plaintext token must appear in the response
+        assert b"created successfully" in resp.data
+        assert b"CI token" in resp.data
+
+    def test_create_token_missing_name_returns_422(self, client):
+        resp = client.post("/admin/api-tokens", data={"name": ""})
+        assert resp.status_code == 422
+        assert b"required" in resp.data
+
+    def test_created_token_is_stored_as_hash(self, client, app):
+        from app import ApiToken, db
+        client.post("/admin/api-tokens", data={"name": "hash-check"})
+        token = ApiToken.query.filter_by(name="hash-check").first()
+        assert token is not None
+        # The stored value is a 64-char hex SHA-256 digest, not the raw token
+        assert len(token.token_hash) == 64
+        assert token.token_hash.isalnum()
+
+    def test_revoke_token(self, client, app):
+        from app import ApiToken, db
+        client.post("/admin/api-tokens", data={"name": "to-revoke"})
+        token = ApiToken.query.filter_by(name="to-revoke").first()
+        assert token.is_active is True
+
+        resp = client.post(f"/admin/api-tokens/{token.id}/revoke")
+        assert resp.status_code == 200
+        db.session.refresh(token)
+        assert token.is_active is False
+
+    def test_revoke_nonexistent_token_returns_404(self, client):
+        resp = client.post("/admin/api-tokens/99999/revoke")
+        assert resp.status_code == 404
