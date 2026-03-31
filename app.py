@@ -2282,6 +2282,14 @@ def api_update_match(match_id):
                 details={"valid_values": sorted(valid_statuses)},
                 status_code=400,
             )
+        terminal_statuses = {"Completed", "Disqualification", "Completed (Bye)"}
+        if new_status in terminal_statuses:
+            return error_response(
+                "BAD_REQUEST",
+                "Cannot set a terminal status via PATCH. Use the /matches/<id>/result endpoint to complete a match.",
+                details={"allowed_statuses": sorted(valid_statuses - terminal_statuses)},
+                status_code=400,
+            )
         match.status = new_status
     if "round_name" in data:
         match.round_name = (data.get("round_name") or "").strip() or None
