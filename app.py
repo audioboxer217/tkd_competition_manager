@@ -1890,6 +1890,44 @@ def api_create_ring():
     return success_response({"id": new_ring.id, "name": new_ring.name}, status_code=201)
 
 
+@api_v1.route("/rings/<int:ring_id>", methods=["GET"])
+@api_login_required
+def api_get_ring(ring_id):
+    ring = db.session.get(Ring, ring_id)
+    if not ring:
+        return error_response("NOT_FOUND", f"Ring {ring_id} not found.", status_code=404)
+    return success_response({"id": ring.id, "name": ring.name})
+
+
+@api_v1.route("/rings/<int:ring_id>", methods=["PATCH"])
+@api_login_required
+def api_update_ring(ring_id):
+    ring = db.session.get(Ring, ring_id)
+    if not ring:
+        return error_response("NOT_FOUND", f"Ring {ring_id} not found.", status_code=404)
+    data = request.get_json()
+    if not isinstance(data, dict):
+        return error_response("BAD_REQUEST", "Request JSON body must be an object.", status_code=400)
+    if "name" in data:
+        new_name = (data.get("name") or "").strip()
+        if not new_name:
+            return error_response("BAD_REQUEST", "Ring name is required.", status_code=400)
+        ring.name = new_name
+    db.session.commit()
+    return success_response({"id": ring.id, "name": ring.name})
+
+
+@api_v1.route("/rings/<int:ring_id>", methods=["DELETE"])
+@api_login_required
+def api_delete_ring(ring_id):
+    ring = db.session.get(Ring, ring_id)
+    if not ring:
+        return error_response("NOT_FOUND", f"Ring {ring_id} not found.", status_code=404)
+    db.session.delete(ring)
+    db.session.commit()
+    return success_response({"id": ring_id, "deleted": True})
+
+
 # --- /api/v1/divisions ---
 
 @api_v1.route("/divisions", methods=["GET"])
@@ -1934,7 +1972,7 @@ def api_get_division(div_id):
     return success_response({"id": division.id, "name": division.name, "event_type": division.event_type})
 
 
-@api_v1.route("/divisions/<int:div_id>", methods=["PUT"])
+@api_v1.route("/divisions/<int:div_id>", methods=["PUT", "PATCH"])
 @api_login_required
 def api_update_division(div_id):
     division = db.session.get(Division, div_id)
@@ -2007,7 +2045,227 @@ def api_get_bracket(div_id):
     return success_response(bracket_data)
 
 
-# --- /api/v1/matches/<id>/result ---
+# --- /api/v1/competitors ---
+
+
+@api_v1.route("/competitors", methods=["GET"])
+@api_login_required
+def api_list_competitors():
+    division_id = request.args.get("division_id", type=int)
+    query = Competitor.query
+    if division_id is not None:
+        query = query.filter_by(division_id=division_id)
+    competitors = query.all()
+    return success_response(
+        [{"id": c.id, "name": c.name, "division_id": c.division_id, "position": c.position} for c in competitors]
+    )
+
+
+@api_v1.route("/competitors", methods=["POST"])
+@api_login_required
+def api_create_competitor():
+    data = request.get_json()
+    if not isinstance(data, dict):
+        return error_response("BAD_REQUEST", "Request JSON body must be an object.", status_code=400)
+    name = (data.get("name") or "").strip()
+    if not name:
+        return error_response("BAD_REQUEST", "Competitor name is required.", status_code=400)
+    division_id = data.get("division_id")
+    if not division_id:
+        return error_response("BAD_REQUEST", "division_id is required.", status_code=400)
+    division = db.session.get(Division, division_id)
+    if not division:
+        return error_response("NOT_FOUND", f"Division {division_id} not found.", status_code=404)
+    position = data.get("position")
+    new_competitor = Competitor(name=name, division_id=division_id, position=position)
+    db.session.add(new_competitor)
+    db.session.commit()
+    return success_response(
+        {
+            "id": new_competitor.id,
+            "name": new_competitor.name,
+            "division_id": new_competitor.division_id,
+            "position": new_competitor.position,
+        },
+        status_code=201,
+    )
+
+
+@api_v1.route("/competitors/<int:competitor_id>", methods=["GET"])
+@api_login_required
+def api_get_competitor(competitor_id):
+    competitor = db.session.get(Competitor, competitor_id)
+    if not competitor:
+        return error_response("NOT_FOUND", f"Competitor {competitor_id} not found.", status_code=404)
+    return success_response(
+        {"id": competitor.id, "name": competitor.name, "division_id": competitor.division_id, "position": competitor.position}
+    )
+
+
+@api_v1.route("/competitors/<int:competitor_id>", methods=["PATCH"])
+@api_login_required
+def api_update_competitor(competitor_id):
+    competitor = db.session.get(Competitor, competitor_id)
+    if not competitor:
+        return error_response("NOT_FOUND", f"Competitor {competitor_id} not found.", status_code=404)
+    data = request.get_json()
+    if not isinstance(data, dict):
+        return error_response("BAD_REQUEST", "Request JSON body must be an object.", status_code=400)
+    if "name" in data:
+        new_name = (data.get("name") or "").strip()
+        if not new_name:
+            return error_response("BAD_REQUEST", "Competitor name is required.", status_code=400)
+        competitor.name = new_name
+    if "division_id" in data:
+        new_division_id = data.get("division_id")
+        if not new_division_id:
+            return error_response("BAD_REQUEST", "division_id must be a valid integer.", status_code=400)
+        division = db.session.get(Division, new_division_id)
+        if not division:
+            return error_response("NOT_FOUND", f"Division {new_division_id} not found.", status_code=404)
+        competitor.division_id = new_division_id
+    if "position" in data:
+        competitor.position = data.get("position")
+    db.session.commit()
+    return success_response(
+        {"id": competitor.id, "name": competitor.name, "division_id": competitor.division_id, "position": competitor.position}
+    )
+
+
+@api_v1.route("/competitors/<int:competitor_id>", methods=["DELETE"])
+@api_login_required
+def api_delete_competitor(competitor_id):
+    competitor = db.session.get(Competitor, competitor_id)
+    if not competitor:
+        return error_response("NOT_FOUND", f"Competitor {competitor_id} not found.", status_code=404)
+    db.session.delete(competitor)
+    db.session.commit()
+    return success_response({"id": competitor_id, "deleted": True})
+
+
+# --- /api/v1/matches ---
+
+
+def _match_to_dict(m):
+    """Serialize a Match instance to a dictionary."""
+    return {
+        "id": m.id,
+        "division_id": m.division_id,
+        "ring_id": m.ring_id,
+        "competitor1_id": m.competitor1_id,
+        "competitor2_id": m.competitor2_id,
+        "winner_id": m.winner_id,
+        "next_match_id": m.next_match_id,
+        "match_number": m.match_number,
+        "status": m.status,
+        "round_name": m.round_name,
+        "start_time": m.start_time.isoformat() if m.start_time else None,
+        "end_time": m.end_time.isoformat() if m.end_time else None,
+    }
+
+
+@api_v1.route("/matches", methods=["GET"])
+@api_login_required
+def api_list_matches():
+    division_id = request.args.get("division_id", type=int)
+    query = Match.query
+    if division_id is not None:
+        query = query.filter_by(division_id=division_id)
+    matches = query.all()
+    return success_response([_match_to_dict(m) for m in matches])
+
+
+@api_v1.route("/matches", methods=["POST"])
+@api_login_required
+def api_create_match():
+    data = request.get_json()
+    if not isinstance(data, dict):
+        return error_response("BAD_REQUEST", "Request JSON body must be an object.", status_code=400)
+    division_id = data.get("division_id")
+    if not division_id:
+        return error_response("BAD_REQUEST", "division_id is required.", status_code=400)
+    division = db.session.get(Division, division_id)
+    if not division:
+        return error_response("NOT_FOUND", f"Division {division_id} not found.", status_code=404)
+    ring_id = data.get("ring_id")
+    if ring_id is not None and not db.session.get(Ring, ring_id):
+        return error_response("NOT_FOUND", f"Ring {ring_id} not found.", status_code=404)
+    competitor1_id = data.get("competitor1_id")
+    if competitor1_id is not None and not db.session.get(Competitor, competitor1_id):
+        return error_response("NOT_FOUND", f"Competitor {competitor1_id} not found.", status_code=404)
+    competitor2_id = data.get("competitor2_id")
+    if competitor2_id is not None and not db.session.get(Competitor, competitor2_id):
+        return error_response("NOT_FOUND", f"Competitor {competitor2_id} not found.", status_code=404)
+    next_match_id = data.get("next_match_id")
+    if next_match_id is not None and not db.session.get(Match, next_match_id):
+        return error_response("NOT_FOUND", f"Match {next_match_id} not found.", status_code=404)
+    round_name = (data.get("round_name") or "").strip() or None
+    match_number = data.get("match_number")
+    new_match = Match(
+        division_id=division_id,
+        ring_id=ring_id,
+        competitor1_id=competitor1_id,
+        competitor2_id=competitor2_id,
+        next_match_id=next_match_id,
+        round_name=round_name,
+        match_number=match_number,
+    )
+    db.session.add(new_match)
+    db.session.commit()
+    return success_response(_match_to_dict(new_match), status_code=201)
+
+
+@api_v1.route("/matches/<int:match_id>", methods=["GET"])
+@api_login_required
+def api_get_match(match_id):
+    match = db.session.get(Match, match_id)
+    if not match:
+        return error_response("NOT_FOUND", f"Match {match_id} not found.", status_code=404)
+    return success_response(_match_to_dict(match))
+
+
+@api_v1.route("/matches/<int:match_id>", methods=["PATCH"])
+@api_login_required
+def api_update_match(match_id):
+    match = db.session.get(Match, match_id)
+    if not match:
+        return error_response("NOT_FOUND", f"Match {match_id} not found.", status_code=404)
+    data = request.get_json()
+    if not isinstance(data, dict):
+        return error_response("BAD_REQUEST", "Request JSON body must be an object.", status_code=400)
+    if "ring_id" in data:
+        ring_id = data.get("ring_id")
+        if ring_id is not None and not db.session.get(Ring, ring_id):
+            return error_response("NOT_FOUND", f"Ring {ring_id} not found.", status_code=404)
+        match.ring_id = ring_id
+    if "status" in data:
+        new_status = data.get("status")
+        valid_statuses = {"Pending", "In Progress", "Completed", "Disqualification", "Completed (Bye)"}
+        if new_status not in valid_statuses:
+            return error_response(
+                "BAD_REQUEST",
+                "Invalid status.",
+                details={"valid_values": sorted(valid_statuses)},
+                status_code=400,
+            )
+        match.status = new_status
+    if "round_name" in data:
+        match.round_name = (data.get("round_name") or "").strip() or None
+    if "match_number" in data:
+        match.match_number = data.get("match_number")
+    if "competitor1_id" in data:
+        competitor1_id = data.get("competitor1_id")
+        if competitor1_id is not None and not db.session.get(Competitor, competitor1_id):
+            return error_response("NOT_FOUND", f"Competitor {competitor1_id} not found.", status_code=404)
+        match.competitor1_id = competitor1_id
+    if "competitor2_id" in data:
+        competitor2_id = data.get("competitor2_id")
+        if competitor2_id is not None and not db.session.get(Competitor, competitor2_id):
+            return error_response("NOT_FOUND", f"Competitor {competitor2_id} not found.", status_code=404)
+        match.competitor2_id = competitor2_id
+    db.session.commit()
+    return success_response(_match_to_dict(match))
+
 
 @api_v1.route("/matches/<int:match_id>/result", methods=["POST"])
 @api_login_required
