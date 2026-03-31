@@ -22,7 +22,8 @@ import math
 import os
 import sys
 
-from app import Competitor, Division, Match, Ring, app, db
+from app import app
+from models import Competitor, Division, Match, Ring, db
 
 # ---------------------------------------------------------------------------
 # Seed data definitions

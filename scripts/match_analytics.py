@@ -33,7 +33,8 @@ add_repo_root_to_path()
 
 from sqlalchemy.orm import joinedload
 
-from app import Division, Match, app
+from app import app
+from models import Division, Match
 
 
 def _fmt_duration(td: timedelta) -> str:
