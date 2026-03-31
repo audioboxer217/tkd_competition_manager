@@ -2070,13 +2070,23 @@ def api_create_competitor():
     name = (data.get("name") or "").strip()
     if not name:
         return error_response("BAD_REQUEST", "Competitor name is required.", status_code=400)
-    division_id = data.get("division_id")
-    if not division_id:
+    raw_division_id = data.get("division_id")
+    if raw_division_id is None:
         return error_response("BAD_REQUEST", "division_id is required.", status_code=400)
+    try:
+        division_id = int(raw_division_id)
+    except (TypeError, ValueError):
+        return error_response("BAD_REQUEST", "division_id must be an integer.", status_code=400)
     division = db.session.get(Division, division_id)
     if not division:
         return error_response("NOT_FOUND", f"Division {division_id} not found.", status_code=404)
-    position = data.get("position")
+    raw_position = data.get("position")
+    position = None
+    if raw_position is not None:
+        try:
+            position = int(raw_position)
+        except (TypeError, ValueError):
+            return error_response("BAD_REQUEST", "position must be an integer.", status_code=400)
     new_competitor = Competitor(name=name, division_id=division_id, position=position)
     db.session.add(new_competitor)
     db.session.commit()
