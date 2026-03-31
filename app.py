@@ -2201,11 +2201,35 @@ def api_create_match():
     if ring_id is not None and not db.session.get(Ring, ring_id):
         return error_response("NOT_FOUND", f"Ring {ring_id} not found.", status_code=404)
     competitor1_id = data.get("competitor1_id")
-    if competitor1_id is not None and not db.session.get(Competitor, competitor1_id):
-        return error_response("NOT_FOUND", f"Competitor {competitor1_id} not found.", status_code=404)
+    competitor1 = None
+    if competitor1_id is not None:
+        competitor1 = db.session.get(Competitor, competitor1_id)
+        if not competitor1:
+            return error_response("NOT_FOUND", f"Competitor {competitor1_id} not found.", status_code=404)
+        if competitor1.division_id != division_id:
+            return error_response(
+                "BAD_REQUEST",
+                f"Competitor {competitor1_id} does not belong to division {division_id}.",
+                status_code=400,
+            )
     competitor2_id = data.get("competitor2_id")
-    if competitor2_id is not None and not db.session.get(Competitor, competitor2_id):
-        return error_response("NOT_FOUND", f"Competitor {competitor2_id} not found.", status_code=404)
+    competitor2 = None
+    if competitor2_id is not None:
+        competitor2 = db.session.get(Competitor, competitor2_id)
+        if not competitor2:
+            return error_response("NOT_FOUND", f"Competitor {competitor2_id} not found.", status_code=404)
+        if competitor2.division_id != division_id:
+            return error_response(
+                "BAD_REQUEST",
+                f"Competitor {competitor2_id} does not belong to division {division_id}.",
+                status_code=400,
+            )
+    if competitor1_id is not None and competitor2_id is not None and competitor1_id == competitor2_id:
+        return error_response(
+            "BAD_REQUEST",
+            "competitor1_id and competitor2_id must refer to different competitors.",
+            status_code=400,
+        )
     next_match_id = data.get("next_match_id")
     if next_match_id is not None and not db.session.get(Match, next_match_id):
         return error_response("NOT_FOUND", f"Match {next_match_id} not found.", status_code=404)
