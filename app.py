@@ -1784,7 +1784,7 @@ def api_unprocessable(e):
 
 @api_v1.errorhandler(500)
 def api_internal_error(e):
-    logging.exception("Unhandled exception in /api/v1")
+    logging.exception("Unhandled exception in /api/v1", exc_info=(type(e), e, e.__traceback__))
     return error_response("INTERNAL_SERVER_ERROR", "An internal server error occurred.", status_code=500)
 
 
