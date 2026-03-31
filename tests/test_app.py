@@ -4846,115 +4846,131 @@ class TestAuthFlow:
 
 
 class TestLoginRequired:
-    """Verify that every @login_required route refuses unauthenticated non-HTMX access."""
+    """
+    Verify that every @login_required route refuses unauthenticated access with
+    the correct status code.  Non-HTMX requests receive a 302 redirect to /login;
+    HTMX requests receive 401 + HX-Redirect: /login.
+
+    Dynamic path segments use "1" as a placeholder because the @login_required
+    decorator fires before any database lookup, so a non-existent ID still
+    triggers the correct auth rejection.
+    """
 
     def _unauth(self, client):
         """Clear the session to simulate an unauthenticated user."""
         with client.session_transaction() as sess:
             sess.clear()
 
-    # --- Full-page admin routes ---
+    # -----------------------------------------------------------------------
+    # Non-HTMX protected routes → 302 redirect to /login
+    # Canonical list of every @login_required route that is typically reached
+    # without an HX-Request header (full-page loads and JSON API endpoints).
+    # -----------------------------------------------------------------------
 
-    def test_admin_page_requires_login(self, client):
+    @pytest.mark.parametrize(
+        "method,path",
+        [
+            # JSON / legacy API
+            ("GET", "/rings"),
+            ("POST", "/rings"),
+            ("GET", "/divisions"),
+            ("POST", "/divisions"),
+            ("DELETE", "/divisions/1"),
+            ("PUT", "/divisions/1"),
+            ("POST", "/matches/1/result"),
+            ("POST", "/divisions/1/generate_bracket"),
+            ("PUT", "/matches/1/schedule"),
+            # Full-page admin views
+            ("GET", "/admin"),
+            ("GET", "/admin/schedule"),
+            ("GET", "/ring/1/scorekeeper"),
+            ("GET", "/admin/divisions/1/setup"),
+            ("GET", "/admin/divisions/1/bracket_manage"),
+            ("GET", "/admin/divisions/1/score_manage"),
+        ],
+    )
+    def test_non_htmx_protected_route_redirects_to_login(self, client, method, path):
+        """Every non-HTMX @login_required route returns 302 → /login."""
         self._unauth(client)
-        resp = client.get("/admin", follow_redirects=False)
-        assert resp.status_code == 302
+        resp = client.open(path, method=method, follow_redirects=False)
+        assert resp.status_code == 302, f"{method} {path} expected 302, got {resp.status_code}"
         assert "/login" in resp.headers["Location"]
 
-    def test_admin_schedule_requires_login(self, client):
-        self._unauth(client)
-        resp = client.get("/admin/schedule", follow_redirects=False)
-        assert resp.status_code == 302
-        assert "/login" in resp.headers["Location"]
+    # -----------------------------------------------------------------------
+    # HTMX protected routes → 401 + HX-Redirect
+    # Canonical list of every @login_required route that HTMX calls with the
+    # HX-Request header.  The auth decorator returns 401 before any DB lookup.
+    # -----------------------------------------------------------------------
 
-    def test_admin_division_setup_requires_login(self, client):
-        div_id = _create_division(client).get_json()["id"]
+    @pytest.mark.parametrize(
+        "method,path",
+        [
+            # Ring HTMX routes
+            ("POST", "/ui/rings"),
+            ("GET", "/ui/rings_list"),
+            ("DELETE", "/ui/rings/1"),
+            ("GET", "/ui/rings/1/scorekeeper_matches"),
+            ("GET", "/ui/rings/1/poomsae_divisions"),
+            # Division HTMX routes
+            ("POST", "/ui/divisions"),
+            ("GET", "/ui/divisions_list"),
+            ("DELETE", "/ui/divisions/1"),
+            ("GET", "/ui/divisions/1/bracket_controls"),
+            ("PATCH", "/ui/divisions/1/bracket_ring"),
+            ("POST", "/ui/divisions/1/poomsae_style"),
+            ("PATCH", "/ui/divisions/1/ring_assignment"),
+            ("PATCH", "/ui/divisions/1/event_status"),
+            ("GET", "/ui/divisions/1/group_results_fragment"),
+            # Division inline-name edit
+            ("GET", "/ui/divisions/1/name_form"),
+            ("GET", "/ui/divisions/1/name_display"),
+            ("PATCH", "/ui/divisions/1/name"),
+            # Competitor HTMX routes
+            ("POST", "/ui/divisions/1/competitors"),
+            ("GET", "/ui/divisions/1/competitors_list"),
+            ("DELETE", "/ui/divisions/1/competitors/1"),
+            ("POST", "/ui/divisions/1/competitors/1/move"),
+            ("POST", "/ui/divisions/1/competitors/1/score"),
+            # Match result recording
+            ("POST", "/ui/matches/1/result"),
+        ],
+    )
+    def test_htmx_protected_route_returns_401_with_hx_redirect(self, client, method, path):
+        """Every HTMX @login_required route returns 401 + HX-Redirect: /login."""
         self._unauth(client)
-        resp = client.get(f"/admin/divisions/{div_id}/setup", follow_redirects=False)
-        assert resp.status_code == 302
-        assert "/login" in resp.headers["Location"]
+        resp = client.open(path, method=method, headers={"HX-Request": "true"})
+        assert resp.status_code == 401, f"{method} {path} expected 401, got {resp.status_code}"
+        assert "HX-Redirect" in resp.headers, f"{method} {path} missing HX-Redirect header"
+        assert "/login" in resp.headers["HX-Redirect"]
 
-    def test_admin_bracket_manage_requires_login(self, client):
-        div_id = _create_division(client).get_json()["id"]
-        self._unauth(client)
-        resp = client.get(f"/admin/divisions/{div_id}/bracket_manage", follow_redirects=False)
-        assert resp.status_code == 302
-        assert "/login" in resp.headers["Location"]
+    # -----------------------------------------------------------------------
+    # Public routes – no @login_required (documents intentional exceptions)
+    # -----------------------------------------------------------------------
 
-    def test_admin_group_results_requires_login(self, client):
-        """group_results is a public read-only page – accessible without login."""
+    def test_group_results_page_is_publicly_accessible(self, client):
+        """/admin/divisions/<id>/group_results has no @login_required decorator.
+
+        This is intentional: it is a public display/results page that audiences
+        view on a projector without admin credentials.
+        """
         div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
         self._unauth(client)
         resp = client.get(f"/admin/divisions/{div_id}/group_results", follow_redirects=False)
         assert resp.status_code == 200
 
-    def test_admin_score_manage_requires_login(self, client):
+    def test_poomsae_placements_fragment_is_publicly_accessible(self, client):
+        """/ui/divisions/<id>/poomsae_placements_fragment has no @login_required decorator.
+
+        This is intentional: the fragment is embedded in public-facing results
+        pages that spectators access without admin credentials.
+        """
         div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
         self._unauth(client)
-        resp = client.get(f"/admin/divisions/{div_id}/score_manage", follow_redirects=False)
-        assert resp.status_code == 302
-        assert "/login" in resp.headers["Location"]
-
-    def test_scorekeeper_page_requires_login(self, client):
-        ring_id = _create_ring(client).get_json()["id"]
-        self._unauth(client)
-        resp = client.get(f"/ring/{ring_id}/scorekeeper", follow_redirects=False)
-        assert resp.status_code == 302
-        assert "/login" in resp.headers["Location"]
-
-    # --- HTMX fragment routes (respond with 401 + HX-Redirect) ---
-
-    def test_ui_rings_list_requires_login_htmx(self, client):
-        self._unauth(client)
-        resp = client.get("/ui/rings_list", headers={"HX-Request": "true"})
-        assert resp.status_code == 401
-        assert "HX-Redirect" in resp.headers
-
-    def test_ui_add_ring_requires_login_htmx(self, client):
-        self._unauth(client)
-        resp = client.post(
-            "/ui/rings",
-            data={"name": "Ring 1"},
-            headers={"HX-Request": "true"},
-        )
-        assert resp.status_code == 401
-        assert "HX-Redirect" in resp.headers
-
-    def test_ui_divisions_list_requires_login_htmx(self, client):
-        self._unauth(client)
-        resp = client.get("/ui/divisions_list", headers={"HX-Request": "true"})
-        assert resp.status_code == 401
-        assert "HX-Redirect" in resp.headers
-
-    def test_ui_add_division_requires_login_htmx(self, client):
-        self._unauth(client)
-        resp = client.post(
-            "/ui/divisions",
-            data={"name": "Test Div", "event_type": "kyorugi"},
-            headers={"HX-Request": "true"},
-        )
-        assert resp.status_code == 401
-        assert "HX-Redirect" in resp.headers
-
-    def test_ui_bracket_controls_requires_login_htmx(self, client):
-        div_id = _create_division(client).get_json()["id"]
-        self._unauth(client)
         resp = client.get(
-            f"/ui/divisions/{div_id}/bracket_controls",
-            headers={"HX-Request": "true"},
+            f"/ui/divisions/{div_id}/poomsae_placements_fragment",
+            follow_redirects=False,
         )
-        assert resp.status_code == 401
-        assert "HX-Redirect" in resp.headers
-
-    def test_ui_scorekeeper_matches_requires_login_htmx(self, client):
-        ring_id = _create_ring(client).get_json()["id"]
-        self._unauth(client)
-        resp = client.get(
-            f"/ui/rings/{ring_id}/scorekeeper_matches",
-            headers={"HX-Request": "true"},
-        )
-        assert resp.status_code == 401
-        assert "HX-Redirect" in resp.headers
+        assert resp.status_code == 200
 
 
 # ---------------------------------------------------------------------------
