@@ -5,6 +5,7 @@ os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 
 import pytest
 
+from app import ApiToken, _generate_raw_token, _hash_token
 from app import app as flask_app
 from app import db as _db
 
@@ -39,21 +40,25 @@ def client(app):
 
 
 @pytest.fixture
-def api_client(app, monkeypatch):
+def api_client(app):
     """Test client for /api/v1 endpoints.
 
-    Patches Supabase ``get_user`` to accept any token and pre-configures
-    ``Authorization: Bearer test-token``.  Also carries a Flask session so
-    that legacy helper routes (competitor/bracket setup) still pass
-    ``login_required``.
-    """
-    from types import SimpleNamespace
+    Creates a real ``ApiToken`` row in the database and pre-configures
+    ``Authorization: Bearer <raw_token>`` on the test client.  Also carries a
+    Flask session so that legacy helper routes (competitor/bracket setup) still
+    pass ``login_required``.
 
-    mock_result = SimpleNamespace(user=SimpleNamespace(email=_TEST_USER_EMAIL, id=_TEST_USER_ID))
-    monkeypatch.setattr("app.supabase_client.auth.get_user", lambda _token: mock_result)
+    The token row is cleaned up by the ``clean_db`` autouse fixture that runs
+    after each test.
+    """
+    raw_token = _generate_raw_token()
+    token_hash = _hash_token(raw_token)
+    token = ApiToken(name="test-token", token_hash=token_hash, user_id=_TEST_USER_ID)
+    _db.session.add(token)
+    _db.session.commit()
 
     c = app.test_client()
-    c.environ_base["HTTP_AUTHORIZATION"] = "Bearer test-token"
+    c.environ_base["HTTP_AUTHORIZATION"] = f"Bearer {raw_token}"
     with c.session_transaction() as sess:
         sess["user"] = {"email": _TEST_USER_EMAIL, "id": _TEST_USER_ID}
     return c
