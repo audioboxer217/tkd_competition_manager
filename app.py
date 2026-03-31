@@ -4,10 +4,10 @@ import os
 from collections import defaultdict
 from datetime import datetime, timezone
 from functools import wraps
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 from dotenv import load_dotenv
-from flask import Flask, Response, jsonify, make_response, redirect, render_template, request, session, url_for
+from flask import Blueprint, Flask, Response, jsonify, make_response, redirect, render_template, request, session, url_for
 from flask_sqlalchemy import SQLAlchemy
 from flask_wtf.csrf import CSRFProtect
 from markupsafe import escape
@@ -382,10 +382,22 @@ def login():
             auth_response = supabase_client.auth.sign_in_with_password({"email": email, "password": password})
             session["user"] = {"email": auth_response.user.email, "id": str(auth_response.user.id)}
             next_url = request.form.get("next", "")
-            parsed = urlparse(next_url)
-            if parsed.scheme or parsed.netloc:
-                next_url = url_for("admin_view")
-            return redirect(next_url or url_for("admin_view"))
+            # Only allow internal relative redirects: resolve against the host URL,
+            # ensure same host, then use only the validated path (never the raw user value).
+            if next_url:
+                host_url = urlparse(request.host_url)
+                test_url = urlparse(urljoin(request.host_url, next_url))
+                if (
+                    test_url.scheme in ("http", "https")
+                    and host_url.netloc == test_url.netloc
+                    and test_url.path
+                ):
+                    safe_next = test_url.path
+                else:
+                    safe_next = url_for("admin_view")
+            else:
+                safe_next = url_for("admin_view")
+            return redirect(safe_next)
         except AuthApiError:
             error = "Invalid email or password."
         except Exception:
@@ -1674,6 +1686,255 @@ def ui_ring_poomsae_divisions(ring_id):
     items.sort(key=lambda item: (item[0] is None, item[0] or 0))
 
     return "\n".join(html for _, html in items)
+
+
+# ---------------------------------------------------------------------------
+# API v1 Blueprint
+# ---------------------------------------------------------------------------
+
+api_v1 = Blueprint("api_v1", __name__, url_prefix="/api/v1")
+
+# Exempt the API blueprint from CSRF (API clients use Authorization, not CSRF tokens)
+csrf.exempt(api_v1)
+
+
+# --- Response helpers ---
+
+def success_response(data, status_code=200):
+    """Return a consistent success JSON envelope: {"data": ..., "error": null}."""
+    return jsonify({"data": data, "error": None}), status_code
+
+
+def error_response(code, message, details=None, status_code=400):
+    """Return a consistent error JSON envelope.
+
+    {"data": null, "error": {"code": "...", "message": "...", "details": {...}}}
+    """
+    return jsonify({"data": None, "error": {"code": code, "message": message, "details": details or {}}}), status_code
+
+
+# --- API-specific login decorator (returns JSON 401, never redirects) ---
+
+def api_login_required(f):
+    """Decorator that requires an authenticated session; returns JSON 401 on failure."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get("user"):
+            return error_response("UNAUTHORIZED", "Authentication required.", status_code=401)
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+# --- Enforce JSON Content-Type on mutating requests ---
+
+@api_v1.before_request
+def enforce_json_content_type():
+    """Reject POST/PUT/PATCH requests whose Content-Type is not application/json."""
+    if request.method in ("POST", "PUT", "PATCH"):
+        if not request.is_json:
+            return error_response(
+                "UNSUPPORTED_MEDIA_TYPE",
+                "Content-Type must be application/json.",
+                status_code=415,
+            )
+
+
+# --- Blueprint-level error handlers ---
+
+@api_v1.errorhandler(400)
+def api_bad_request(e):
+    return error_response("BAD_REQUEST", str(e), status_code=400)
+
+
+@api_v1.errorhandler(401)
+def api_unauthorized(e):
+    return error_response("UNAUTHORIZED", str(e), status_code=401)
+
+
+@api_v1.errorhandler(404)
+def api_not_found(e):
+    return error_response("NOT_FOUND", str(e), status_code=404)
+
+
+@api_v1.errorhandler(409)
+def api_conflict(e):
+    return error_response("CONFLICT", str(e), status_code=409)
+
+
+@api_v1.errorhandler(422)
+def api_unprocessable(e):
+    return error_response("UNPROCESSABLE_ENTITY", str(e), status_code=422)
+
+
+@api_v1.errorhandler(500)
+def api_internal_error(e):
+    return error_response("INTERNAL_SERVER_ERROR", "An internal server error occurred.", status_code=500)
+
+
+# --- /api/v1/rings ---
+
+@api_v1.route("/rings", methods=["GET"])
+@api_login_required
+def api_list_rings():
+    rings = Ring.query.all()
+    return success_response([{"id": r.id, "name": r.name} for r in rings])
+
+
+@api_v1.route("/rings", methods=["POST"])
+@api_login_required
+def api_create_ring():
+    data = request.get_json()
+    name = (data.get("name") or "").strip()
+    if not name:
+        return error_response("BAD_REQUEST", "Ring name is required.", status_code=400)
+    new_ring = Ring(name=name)
+    db.session.add(new_ring)
+    db.session.commit()
+    return success_response({"id": new_ring.id, "name": new_ring.name}, status_code=201)
+
+
+# --- /api/v1/divisions ---
+
+@api_v1.route("/divisions", methods=["GET"])
+@api_login_required
+def api_list_divisions():
+    divisions = Division.query.all()
+    return success_response([{"id": d.id, "name": d.name, "event_type": d.event_type} for d in divisions])
+
+
+@api_v1.route("/divisions", methods=["POST"])
+@api_login_required
+def api_create_division():
+    data = request.get_json()
+    name = (data.get("name") or "").strip()
+    if not name:
+        return error_response("BAD_REQUEST", "Division name is required.", status_code=400)
+    event_type = data.get("event_type", "kyorugi")
+    if event_type not in VALID_EVENT_TYPES:
+        return error_response(
+            "BAD_REQUEST",
+            "Invalid event type.",
+            details={"valid_values": sorted(VALID_EVENT_TYPES)},
+            status_code=400,
+        )
+    new_division = Division(name=name, event_type=event_type)
+    db.session.add(new_division)
+    db.session.commit()
+    return success_response(
+        {"id": new_division.id, "name": new_division.name, "event_type": new_division.event_type},
+        status_code=201,
+    )
+
+
+@api_v1.route("/divisions/<int:div_id>", methods=["GET"])
+@api_login_required
+def api_get_division(div_id):
+    division = db.session.get(Division, div_id)
+    if not division:
+        return error_response("NOT_FOUND", f"Division {div_id} not found.", status_code=404)
+    return success_response({"id": division.id, "name": division.name, "event_type": division.event_type})
+
+
+@api_v1.route("/divisions/<int:div_id>", methods=["PUT"])
+@api_login_required
+def api_update_division(div_id):
+    division = db.session.get(Division, div_id)
+    if not division:
+        return error_response("NOT_FOUND", f"Division {div_id} not found.", status_code=404)
+    data = request.get_json()
+    new_name = (data.get("name") or "").strip()
+    if not new_name:
+        return error_response("BAD_REQUEST", "Division name is required.", status_code=400)
+    division.name = new_name
+    db.session.commit()
+    return success_response({"id": division.id, "name": division.name, "event_type": division.event_type})
+
+
+@api_v1.route("/divisions/<int:div_id>", methods=["DELETE"])
+@api_login_required
+def api_delete_division(div_id):
+    division = db.session.get(Division, div_id)
+    if not division:
+        return error_response("NOT_FOUND", f"Division {div_id} not found.", status_code=404)
+    db.session.delete(division)
+    db.session.commit()
+    return success_response({"id": div_id, "deleted": True})
+
+
+# --- /api/v1/divisions/<id>/bracket ---
+
+@api_v1.route("/divisions/<int:div_id>/bracket", methods=["GET"])
+@api_login_required
+def api_get_bracket(div_id):
+    division = db.session.get(Division, div_id)
+    if not division:
+        return error_response("NOT_FOUND", f"Division {div_id} not found.", status_code=404)
+    matches = Match.query.filter_by(division_id=div_id).all()
+    if not matches:
+        return error_response("NOT_FOUND", "No bracket found for this division.", status_code=404)
+
+    def _comp_data(comp_id):
+        if not comp_id:
+            return None
+        comp = db.session.get(Competitor, comp_id)
+        return {"id": comp.id, "name": comp.name} if comp else None
+
+    bracket_data = [
+        {
+            "match_id": m.id,
+            "round_name": m.round_name,
+            "status": m.status,
+            "ring_id": m.ring_id,
+            "next_match_id": m.next_match_id,
+            "competitor1": _comp_data(m.competitor1_id),
+            "competitor2": _comp_data(m.competitor2_id),
+            "winner_id": m.winner_id,
+        }
+        for m in matches
+    ]
+    return success_response(bracket_data)
+
+
+# --- /api/v1/matches/<id>/result ---
+
+@api_v1.route("/matches/<int:match_id>/result", methods=["POST"])
+@api_login_required
+def api_record_result(match_id):
+    match = db.session.get(Match, match_id)
+    if not match:
+        return error_response("NOT_FOUND", f"Match {match_id} not found.", status_code=404)
+
+    data = request.get_json()
+    status = data.get("status")
+    winner_id = data.get("winner_id")
+
+    valid_statuses = {"Completed", "Disqualification"}
+    if status not in valid_statuses:
+        return error_response(
+            "BAD_REQUEST",
+            "Invalid status.",
+            details={"valid_values": sorted(valid_statuses)},
+            status_code=400,
+        )
+    if not winner_id:
+        return error_response("BAD_REQUEST", "winner_id is required.", status_code=400)
+
+    match.status = status
+    match.winner_id = winner_id
+
+    if match.next_match_id:
+        next_match = db.session.get(Match, match.next_match_id)
+        if not next_match.competitor1_id:
+            next_match.competitor1_id = winner_id
+        elif not next_match.competitor2_id:
+            next_match.competitor2_id = winner_id
+
+    db.session.commit()
+    return success_response({"match_id": match_id, "status": match.status, "winner_id": match.winner_id})
+
+
+# Register the API v1 blueprint
+app.register_blueprint(api_v1)
 
 
 # Initialize DB for testing
