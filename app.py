@@ -2295,16 +2295,45 @@ def api_update_match(match_id):
         match.round_name = (data.get("round_name") or "").strip() or None
     if "match_number" in data:
         match.match_number = data.get("match_number")
+    # Prepare new competitor IDs so we can validate before assigning
+    new_competitor1_id = match.competitor1_id
+    new_competitor2_id = match.competitor2_id
     if "competitor1_id" in data:
         competitor1_id = data.get("competitor1_id")
-        if competitor1_id is not None and not db.session.get(Competitor, competitor1_id):
-            return error_response("NOT_FOUND", f"Competitor {competitor1_id} not found.", status_code=404)
-        match.competitor1_id = competitor1_id
+        if competitor1_id is not None:
+            competitor1 = db.session.get(Competitor, competitor1_id)
+            if not competitor1:
+                return error_response("NOT_FOUND", f"Competitor {competitor1_id} not found.", status_code=404)
+            if competitor1.division_id != match.division_id:
+                return error_response(
+                    "BAD_REQUEST",
+                    f"Competitor {competitor1_id} does not belong to this match's division.",
+                    status_code=400,
+                )
+        new_competitor1_id = competitor1_id
     if "competitor2_id" in data:
         competitor2_id = data.get("competitor2_id")
-        if competitor2_id is not None and not db.session.get(Competitor, competitor2_id):
-            return error_response("NOT_FOUND", f"Competitor {competitor2_id} not found.", status_code=404)
-        match.competitor2_id = competitor2_id
+        if competitor2_id is not None:
+            competitor2 = db.session.get(Competitor, competitor2_id)
+            if not competitor2:
+                return error_response("NOT_FOUND", f"Competitor {competitor2_id} not found.", status_code=404)
+            if competitor2.division_id != match.division_id:
+                return error_response(
+                    "BAD_REQUEST",
+                    f"Competitor {competitor2_id} does not belong to this match's division.",
+                    status_code=400,
+                )
+        new_competitor2_id = competitor2_id
+    # Ensure the two competitors are not the same when both are set
+    if new_competitor1_id is not None and new_competitor2_id is not None:
+        if new_competitor1_id == new_competitor2_id:
+            return error_response(
+                "BAD_REQUEST",
+                "competitor1_id and competitor2_id must refer to different competitors.",
+                status_code=400,
+            )
+    match.competitor1_id = new_competitor1_id
+    match.competitor2_id = new_competitor2_id
     db.session.commit()
     return success_response(_match_to_dict(match))
 
