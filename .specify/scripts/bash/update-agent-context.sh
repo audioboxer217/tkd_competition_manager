@@ -261,7 +261,18 @@ get_commands_for_language() {
     
     case "$lang" in
         *"Python"*)
-            echo "cd src && pytest && ruff check ."
+            local py_test_cmd="pytest"
+            local py_lint_cmd=""
+            # Use uv only when uv.lock is present (definitive indicator of uv as package manager)
+            if [[ -f "${REPO_ROOT}/uv.lock" ]]; then
+                py_test_cmd="uv run pytest"
+            fi
+            # Only include ruff when it is explicitly declared in pyproject.toml
+            # Match a [tool.ruff] section or ruff as a dependency entry
+            if [[ -f "${REPO_ROOT}/pyproject.toml" ]] && grep -qE '^\[tool\.ruff\]|^\s*"ruff[>=<!; ]|^\s*ruff\s*[>=<!]' "${REPO_ROOT}/pyproject.toml"; then
+                py_lint_cmd=" && uv run ruff check ."
+            fi
+            echo "${py_test_cmd}${py_lint_cmd}"
             ;;
         *"Rust"*)
             echo "cargo test && cargo clippy"
