@@ -5,7 +5,8 @@ except ModuleNotFoundError:  # Allows `python scripts/init_db.py`
 
 add_repo_root_to_path()
 
-from app import app, db
+from app import app
+from models import db
 
 # Create an application context
 with app.app_context():

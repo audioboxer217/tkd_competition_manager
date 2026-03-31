@@ -17,7 +17,9 @@ except ModuleNotFoundError:  # Allows `python scripts/generate_api_token.py`
 
 add_repo_root_to_path()
 
-from app import ApiToken, _generate_raw_token, _hash_token, app, db
+from api import _generate_raw_token, _hash_token
+from app import app
+from models import ApiToken, db
 
 
 def main() -> None:
