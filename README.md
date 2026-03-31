@@ -101,9 +101,6 @@ Run scripts from the repository root:
 uv run scripts/init_db.py
 uv run scripts/reset_db.py
 uv run scripts/test_db.py
-uv run scripts/migrate_add_event_type.py
-uv run scripts/migrate_add_poomsae_style.py
-uv run scripts/migrate_add_position.py
 uv run scripts/update_secrets.py --env dev
 ```
 
