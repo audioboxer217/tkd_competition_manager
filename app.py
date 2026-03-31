@@ -1694,7 +1694,9 @@ def ui_ring_poomsae_divisions(ring_id):
 
 api_v1 = Blueprint("api_v1", __name__, url_prefix="/api/v1")
 
-# Exempt the API blueprint from CSRF (API clients use Authorization, not CSRF tokens)
+# Exempt the API blueprint from CSRF.  Authentication is Bearer-token-based
+# (see `api_login_required`), so requests are not tied to the session cookie
+# and CSRF protection is not required.
 csrf.exempt(api_v1)
 
 
@@ -1713,14 +1715,28 @@ def error_response(code, message, details=None, status_code=400):
     return jsonify({"data": None, "error": {"code": code, "message": message, "details": details or {}}}), status_code
 
 
-# --- API-specific login decorator (returns JSON 401, never redirects) ---
+# --- API-specific auth decorator (Bearer token, returns JSON 401, never redirects) ---
 
 def api_login_required(f):
-    """Decorator that requires an authenticated session; returns JSON 401 on failure."""
+    """Require a valid Supabase Bearer token in the Authorization header.
+
+    Extracts the token from ``Authorization: Bearer <token>``, validates it
+    with Supabase, and returns a JSON 401 envelope on failure — never redirects.
+    """
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if not session.get("user"):
-            return error_response("UNAUTHORIZED", "Authentication required.", status_code=401)
+        auth_header = request.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            return error_response(
+                "UNAUTHORIZED",
+                "Authorization header with Bearer token is required.",
+                status_code=401,
+            )
+        token = auth_header[len("Bearer "):]
+        try:
+            supabase_client.auth.get_user(token)
+        except Exception:
+            return error_response("UNAUTHORIZED", "Invalid or expired token.", status_code=401)
         return f(*args, **kwargs)
     return decorated_function
 
@@ -1768,6 +1784,7 @@ def api_unprocessable(e):
 
 @api_v1.errorhandler(500)
 def api_internal_error(e):
+    logging.exception("Unhandled exception in /api/v1")
     return error_response("INTERNAL_SERVER_ERROR", "An internal server error occurred.", status_code=500)
 
 
@@ -1784,6 +1801,8 @@ def api_list_rings():
 @api_login_required
 def api_create_ring():
     data = request.get_json()
+    if not isinstance(data, dict):
+        return error_response("BAD_REQUEST", "Request JSON body must be an object.", status_code=400)
     name = (data.get("name") or "").strip()
     if not name:
         return error_response("BAD_REQUEST", "Ring name is required.", status_code=400)
@@ -1806,6 +1825,8 @@ def api_list_divisions():
 @api_login_required
 def api_create_division():
     data = request.get_json()
+    if not isinstance(data, dict):
+        return error_response("BAD_REQUEST", "Request JSON body must be an object.", status_code=400)
     name = (data.get("name") or "").strip()
     if not name:
         return error_response("BAD_REQUEST", "Division name is required.", status_code=400)
@@ -1842,6 +1863,8 @@ def api_update_division(div_id):
     if not division:
         return error_response("NOT_FOUND", f"Division {div_id} not found.", status_code=404)
     data = request.get_json()
+    if not isinstance(data, dict):
+        return error_response("BAD_REQUEST", "Request JSON body must be an object.", status_code=400)
     new_name = (data.get("name") or "").strip()
     if not new_name:
         return error_response("BAD_REQUEST", "Division name is required.", status_code=400)
@@ -1873,11 +1896,22 @@ def api_get_bracket(div_id):
     if not matches:
         return error_response("NOT_FOUND", "No bracket found for this division.", status_code=404)
 
+    # Bulk-load all competitors referenced in this division's matches to avoid N+1 queries.
+    competitor_ids = {
+        comp_id
+        for m in matches
+        for comp_id in (m.competitor1_id, m.competitor2_id)
+        if comp_id is not None
+    }
+    comp_map = {}
+    if competitor_ids:
+        comps = Competitor.query.filter(Competitor.id.in_(competitor_ids)).all()
+        comp_map = {c.id: {"id": c.id, "name": c.name} for c in comps}
+
     def _comp_data(comp_id):
         if not comp_id:
             return None
-        comp = db.session.get(Competitor, comp_id)
-        return {"id": comp.id, "name": comp.name} if comp else None
+        return comp_map.get(comp_id)
 
     bracket_data = [
         {
@@ -1905,6 +1939,8 @@ def api_record_result(match_id):
         return error_response("NOT_FOUND", f"Match {match_id} not found.", status_code=404)
 
     data = request.get_json()
+    if not isinstance(data, dict):
+        return error_response("BAD_REQUEST", "Request JSON body must be an object.", status_code=400)
     status = data.get("status")
     winner_id = data.get("winner_id")
 
@@ -1918,6 +1954,15 @@ def api_record_result(match_id):
         )
     if not winner_id:
         return error_response("BAD_REQUEST", "winner_id is required.", status_code=400)
+
+    valid_competitors = {match.competitor1_id, match.competitor2_id} - {None}
+    if winner_id not in valid_competitors:
+        return error_response(
+            "BAD_REQUEST",
+            "winner_id must be a participant in this match.",
+            details={"valid_winner_ids": sorted(valid_competitors)},
+            status_code=400,
+        )
 
     match.status = status
     match.winner_id = winner_id

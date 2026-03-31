@@ -5123,14 +5123,36 @@ class TestApiResponseHelpers:
 
 
 class TestApiV1Auth:
-    def test_unauthenticated_returns_json_401(self, app):
-        """Unauthenticated requests must receive JSON 401, never a redirect."""
+    def test_missing_authorization_header_returns_json_401(self, app):
+        """Requests with no Authorization header must receive JSON 401."""
         with app.test_client() as c:
             resp = c.get("/api/v1/rings")
             assert resp.status_code == 401
             body = resp.get_json()
             assert body["data"] is None
             assert body["error"]["code"] == "UNAUTHORIZED"
+
+    def test_non_bearer_authorization_returns_json_401(self, app):
+        """Authorization headers that don't start with 'Bearer ' are rejected."""
+        with app.test_client() as c:
+            resp = c.get("/api/v1/rings", headers={"Authorization": "Basic dXNlcjpwYXNz"})
+            assert resp.status_code == 401
+            assert resp.get_json()["error"]["code"] == "UNAUTHORIZED"
+
+    def test_invalid_bearer_token_returns_json_401(self, app, monkeypatch):
+        """An expired / invalid token causes Supabase to raise; response is 401."""
+        def _reject(_token):
+            raise Exception("invalid token")
+        monkeypatch.setattr("app.supabase_client.auth.get_user", _reject)
+        with app.test_client() as c:
+            resp = c.get("/api/v1/rings", headers={"Authorization": "Bearer bad-token"})
+            assert resp.status_code == 401
+            assert resp.get_json()["error"]["code"] == "UNAUTHORIZED"
+
+    def test_valid_bearer_token_grants_access(self, api_client):
+        """A request with a valid Bearer token is accepted."""
+        resp = api_client.get("/api/v1/rings")
+        assert resp.status_code == 200
 
     def test_unauthenticated_post_returns_json_401(self, app):
         with app.test_client() as c:
@@ -5144,21 +5166,26 @@ class TestApiV1Auth:
 
 
 class TestApiV1ContentType:
-    def test_post_without_json_content_type_rejected(self, client):
-        resp = client.post("/api/v1/rings", data="name=Ring1")
+    def test_post_without_json_content_type_rejected(self, api_client):
+        resp = api_client.post("/api/v1/rings", data="name=Ring1")
         assert resp.status_code == 415
         body = resp.get_json()
         assert body["error"]["code"] == "UNSUPPORTED_MEDIA_TYPE"
 
-    def test_put_without_json_content_type_rejected(self, client):
-        # Create a division first via the legacy endpoint
-        div_id = client.post("/divisions", json={"name": "D1"}).get_json()["id"]
-        resp = client.put(f"/api/v1/divisions/{div_id}", data="name=New")
+    def test_put_without_json_content_type_rejected(self, api_client):
+        div_id = api_client.post("/api/v1/divisions", json={"name": "D1"}).get_json()["data"]["id"]
+        resp = api_client.put(f"/api/v1/divisions/{div_id}", data="name=New")
         assert resp.status_code == 415
 
-    def test_get_does_not_require_json_content_type(self, client):
-        resp = client.get("/api/v1/rings")
+    def test_get_does_not_require_json_content_type(self, api_client):
+        resp = api_client.get("/api/v1/rings")
         assert resp.status_code == 200
+
+    def test_non_dict_json_body_returns_400(self, api_client):
+        """Sending a JSON array instead of an object returns BAD_REQUEST."""
+        resp = api_client.post("/api/v1/rings", json=["name", "Ring1"])
+        assert resp.status_code == 400
+        assert resp.get_json()["error"]["code"] == "BAD_REQUEST"
 
 
 # ---------------------------------------------------------------------------
@@ -5167,37 +5194,42 @@ class TestApiV1ContentType:
 
 
 class TestApiV1Rings:
-    def test_list_rings_empty(self, client):
-        resp = client.get("/api/v1/rings")
+    def test_list_rings_empty(self, api_client):
+        resp = api_client.get("/api/v1/rings")
         assert resp.status_code == 200
         body = resp.get_json()
         assert body["error"] is None
         assert body["data"] == []
 
-    def test_create_ring(self, client):
-        resp = client.post("/api/v1/rings", json={"name": "Ring A"})
+    def test_create_ring(self, api_client):
+        resp = api_client.post("/api/v1/rings", json={"name": "Ring A"})
         assert resp.status_code == 201
         body = resp.get_json()
         assert body["error"] is None
         assert body["data"]["name"] == "Ring A"
         assert "id" in body["data"]
 
-    def test_list_rings_after_create(self, client):
-        client.post("/api/v1/rings", json={"name": "Ring 1"})
-        resp = client.get("/api/v1/rings")
+    def test_list_rings_after_create(self, api_client):
+        api_client.post("/api/v1/rings", json={"name": "Ring 1"})
+        resp = api_client.get("/api/v1/rings")
         body = resp.get_json()
         assert len(body["data"]) == 1
         assert body["data"][0]["name"] == "Ring 1"
 
-    def test_create_ring_missing_name(self, client):
-        resp = client.post("/api/v1/rings", json={"name": ""})
+    def test_create_ring_missing_name(self, api_client):
+        resp = api_client.post("/api/v1/rings", json={"name": ""})
         assert resp.status_code == 400
         body = resp.get_json()
         assert body["data"] is None
         assert body["error"]["code"] == "BAD_REQUEST"
 
-    def test_create_ring_no_name_field(self, client):
-        resp = client.post("/api/v1/rings", json={})
+    def test_create_ring_no_name_field(self, api_client):
+        resp = api_client.post("/api/v1/rings", json={})
+        assert resp.status_code == 400
+        assert resp.get_json()["error"]["code"] == "BAD_REQUEST"
+
+    def test_create_ring_non_dict_body_returns_400(self, api_client):
+        resp = api_client.post("/api/v1/rings", json=["Ring A"])
         assert resp.status_code == 400
         assert resp.get_json()["error"]["code"] == "BAD_REQUEST"
 
@@ -5208,15 +5240,15 @@ class TestApiV1Rings:
 
 
 class TestApiV1Divisions:
-    def test_list_divisions_empty(self, client):
-        resp = client.get("/api/v1/divisions")
+    def test_list_divisions_empty(self, api_client):
+        resp = api_client.get("/api/v1/divisions")
         assert resp.status_code == 200
         body = resp.get_json()
         assert body["error"] is None
         assert body["data"] == []
 
-    def test_create_division_kyorugi(self, client):
-        resp = client.post("/api/v1/divisions", json={"name": "Male - Black Belt", "event_type": "kyorugi"})
+    def test_create_division_kyorugi(self, api_client):
+        resp = api_client.post("/api/v1/divisions", json={"name": "Male - Black Belt", "event_type": "kyorugi"})
         assert resp.status_code == 201
         body = resp.get_json()
         assert body["error"] is None
@@ -5224,71 +5256,82 @@ class TestApiV1Divisions:
         assert body["data"]["event_type"] == "kyorugi"
         assert "id" in body["data"]
 
-    def test_create_division_poomsae(self, client):
-        resp = client.post("/api/v1/divisions", json={"name": "Junior Poomsae", "event_type": "poomsae"})
+    def test_create_division_poomsae(self, api_client):
+        resp = api_client.post("/api/v1/divisions", json={"name": "Junior Poomsae", "event_type": "poomsae"})
         assert resp.status_code == 201
         assert resp.get_json()["data"]["event_type"] == "poomsae"
 
-    def test_create_division_default_event_type(self, client):
-        resp = client.post("/api/v1/divisions", json={"name": "Open"})
+    def test_create_division_default_event_type(self, api_client):
+        resp = api_client.post("/api/v1/divisions", json={"name": "Open"})
         assert resp.status_code == 201
         assert resp.get_json()["data"]["event_type"] == "kyorugi"
 
-    def test_create_division_invalid_event_type(self, client):
-        resp = client.post("/api/v1/divisions", json={"name": "X", "event_type": "invalid"})
+    def test_create_division_invalid_event_type(self, api_client):
+        resp = api_client.post("/api/v1/divisions", json={"name": "X", "event_type": "invalid"})
         assert resp.status_code == 400
         body = resp.get_json()
         assert body["error"]["code"] == "BAD_REQUEST"
         assert "valid_values" in body["error"]["details"]
 
-    def test_create_division_missing_name(self, client):
-        resp = client.post("/api/v1/divisions", json={"event_type": "kyorugi"})
+    def test_create_division_missing_name(self, api_client):
+        resp = api_client.post("/api/v1/divisions", json={"event_type": "kyorugi"})
         assert resp.status_code == 400
         assert resp.get_json()["error"]["code"] == "BAD_REQUEST"
 
-    def test_get_division(self, client):
-        div_id = client.post("/api/v1/divisions", json={"name": "Div1"}).get_json()["data"]["id"]
-        resp = client.get(f"/api/v1/divisions/{div_id}")
+    def test_create_division_non_dict_body_returns_400(self, api_client):
+        resp = api_client.post("/api/v1/divisions", json=["name", "Div1"])
+        assert resp.status_code == 400
+        assert resp.get_json()["error"]["code"] == "BAD_REQUEST"
+
+    def test_get_division(self, api_client):
+        div_id = api_client.post("/api/v1/divisions", json={"name": "Div1"}).get_json()["data"]["id"]
+        resp = api_client.get(f"/api/v1/divisions/{div_id}")
         assert resp.status_code == 200
         body = resp.get_json()
         assert body["data"]["id"] == div_id
         assert body["data"]["name"] == "Div1"
 
-    def test_get_division_not_found(self, client):
-        resp = client.get("/api/v1/divisions/9999")
+    def test_get_division_not_found(self, api_client):
+        resp = api_client.get("/api/v1/divisions/9999")
         assert resp.status_code == 404
         body = resp.get_json()
         assert body["error"]["code"] == "NOT_FOUND"
 
-    def test_update_division(self, client):
-        div_id = client.post("/api/v1/divisions", json={"name": "Old"}).get_json()["data"]["id"]
-        resp = client.put(f"/api/v1/divisions/{div_id}", json={"name": "New"})
+    def test_update_division(self, api_client):
+        div_id = api_client.post("/api/v1/divisions", json={"name": "Old"}).get_json()["data"]["id"]
+        resp = api_client.put(f"/api/v1/divisions/{div_id}", json={"name": "New"})
         assert resp.status_code == 200
         body = resp.get_json()
         assert body["data"]["name"] == "New"
 
-    def test_update_division_not_found(self, client):
-        resp = client.put("/api/v1/divisions/9999", json={"name": "X"})
-        assert resp.status_code == 404
-        assert resp.get_json()["error"]["code"] == "NOT_FOUND"
-
-    def test_update_division_empty_name(self, client):
-        div_id = client.post("/api/v1/divisions", json={"name": "D"}).get_json()["data"]["id"]
-        resp = client.put(f"/api/v1/divisions/{div_id}", json={"name": ""})
+    def test_update_division_non_dict_body_returns_400(self, api_client):
+        div_id = api_client.post("/api/v1/divisions", json={"name": "D"}).get_json()["data"]["id"]
+        resp = api_client.put(f"/api/v1/divisions/{div_id}", json=["name", "New"])
         assert resp.status_code == 400
         assert resp.get_json()["error"]["code"] == "BAD_REQUEST"
 
-    def test_delete_division(self, client):
-        div_id = client.post("/api/v1/divisions", json={"name": "ToDelete"}).get_json()["data"]["id"]
-        resp = client.delete(f"/api/v1/divisions/{div_id}")
+    def test_update_division_not_found(self, api_client):
+        resp = api_client.put("/api/v1/divisions/9999", json={"name": "X"})
+        assert resp.status_code == 404
+        assert resp.get_json()["error"]["code"] == "NOT_FOUND"
+
+    def test_update_division_empty_name(self, api_client):
+        div_id = api_client.post("/api/v1/divisions", json={"name": "D"}).get_json()["data"]["id"]
+        resp = api_client.put(f"/api/v1/divisions/{div_id}", json={"name": ""})
+        assert resp.status_code == 400
+        assert resp.get_json()["error"]["code"] == "BAD_REQUEST"
+
+    def test_delete_division(self, api_client):
+        div_id = api_client.post("/api/v1/divisions", json={"name": "ToDelete"}).get_json()["data"]["id"]
+        resp = api_client.delete(f"/api/v1/divisions/{div_id}")
         assert resp.status_code == 200
         body = resp.get_json()
         assert body["data"]["deleted"] is True
         # Confirm it is gone
-        assert client.get(f"/api/v1/divisions/{div_id}").status_code == 404
+        assert api_client.get(f"/api/v1/divisions/{div_id}").status_code == 404
 
-    def test_delete_division_not_found(self, client):
-        resp = client.delete("/api/v1/divisions/9999")
+    def test_delete_division_not_found(self, api_client):
+        resp = api_client.delete("/api/v1/divisions/9999")
         assert resp.status_code == 404
         assert resp.get_json()["error"]["code"] == "NOT_FOUND"
 
@@ -5299,17 +5342,17 @@ class TestApiV1Divisions:
 
 
 class TestApiV1Bracket:
-    def _setup_division_with_bracket(self, client):
+    def _setup_division_with_bracket(self, api_client):
         # Competitors and bracket generation don't have /api/v1 endpoints yet;
         # use the existing HTMX/legacy routes purely for test-data setup.
-        div_id = client.post("/api/v1/divisions", json={"name": "Bracket Div"}).get_json()["data"]["id"]
-        client.post(f"/ui/divisions/{div_id}/competitors", data={"names": "Alice\nBob\nCarol\nDave"})
-        client.post(f"/divisions/{div_id}/generate_bracket")
+        div_id = api_client.post("/api/v1/divisions", json={"name": "Bracket Div"}).get_json()["data"]["id"]
+        api_client.post(f"/ui/divisions/{div_id}/competitors", data={"names": "Alice\nBob\nCarol\nDave"})
+        api_client.post(f"/divisions/{div_id}/generate_bracket")
         return div_id
 
-    def test_get_bracket(self, client):
-        div_id = self._setup_division_with_bracket(client)
-        resp = client.get(f"/api/v1/divisions/{div_id}/bracket")
+    def test_get_bracket(self, api_client):
+        div_id = self._setup_division_with_bracket(api_client)
+        resp = api_client.get(f"/api/v1/divisions/{div_id}/bracket")
         assert resp.status_code == 200
         body = resp.get_json()
         assert body["error"] is None
@@ -5322,14 +5365,14 @@ class TestApiV1Bracket:
         assert "competitor1" in match
         assert "competitor2" in match
 
-    def test_get_bracket_division_not_found(self, client):
-        resp = client.get("/api/v1/divisions/9999/bracket")
+    def test_get_bracket_division_not_found(self, api_client):
+        resp = api_client.get("/api/v1/divisions/9999/bracket")
         assert resp.status_code == 404
         assert resp.get_json()["error"]["code"] == "NOT_FOUND"
 
-    def test_get_bracket_no_bracket_yet(self, client):
-        div_id = client.post("/api/v1/divisions", json={"name": "Empty Div"}).get_json()["data"]["id"]
-        resp = client.get(f"/api/v1/divisions/{div_id}/bracket")
+    def test_get_bracket_no_bracket_yet(self, api_client):
+        div_id = api_client.post("/api/v1/divisions", json={"name": "Empty Div"}).get_json()["data"]["id"]
+        resp = api_client.get(f"/api/v1/divisions/{div_id}/bracket")
         assert resp.status_code == 404
         assert resp.get_json()["error"]["code"] == "NOT_FOUND"
 
@@ -5340,18 +5383,18 @@ class TestApiV1Bracket:
 
 
 class TestApiV1MatchResult:
-    def _setup_match(self, client):
+    def _setup_match(self, api_client):
         # Competitors and bracket generation don't have /api/v1 endpoints yet;
         # use the existing HTMX/legacy routes purely for test-data setup.
-        div_id = client.post("/api/v1/divisions", json={"name": "Match Div"}).get_json()["data"]["id"]
-        client.post(f"/ui/divisions/{div_id}/competitors", data={"names": "Alice\nBob"})
-        client.post(f"/divisions/{div_id}/generate_bracket")
+        div_id = api_client.post("/api/v1/divisions", json={"name": "Match Div"}).get_json()["data"]["id"]
+        api_client.post(f"/ui/divisions/{div_id}/competitors", data={"names": "Alice\nBob"})
+        api_client.post(f"/divisions/{div_id}/generate_bracket")
         match = Match.query.filter_by(division_id=div_id, round_name="Final").first()
         return match
 
-    def test_record_result_completed(self, client):
-        match = self._setup_match(client)
-        resp = client.post(
+    def test_record_result_completed(self, api_client):
+        match = self._setup_match(api_client)
+        resp = api_client.post(
             f"/api/v1/matches/{match.id}/result",
             json={"status": "Completed", "winner_id": match.competitor1_id},
         )
@@ -5361,18 +5404,18 @@ class TestApiV1MatchResult:
         assert body["data"]["status"] == "Completed"
         assert body["data"]["winner_id"] == match.competitor1_id
 
-    def test_record_result_disqualification(self, client):
-        match = self._setup_match(client)
-        resp = client.post(
+    def test_record_result_disqualification(self, api_client):
+        match = self._setup_match(api_client)
+        resp = api_client.post(
             f"/api/v1/matches/{match.id}/result",
             json={"status": "Disqualification", "winner_id": match.competitor2_id},
         )
         assert resp.status_code == 200
         assert resp.get_json()["data"]["status"] == "Disqualification"
 
-    def test_record_result_invalid_status(self, client):
-        match = self._setup_match(client)
-        resp = client.post(
+    def test_record_result_invalid_status(self, api_client):
+        match = self._setup_match(api_client)
+        resp = api_client.post(
             f"/api/v1/matches/{match.id}/result",
             json={"status": "Invalid", "winner_id": match.competitor1_id},
         )
@@ -5381,27 +5424,55 @@ class TestApiV1MatchResult:
         assert body["error"]["code"] == "BAD_REQUEST"
         assert "valid_values" in body["error"]["details"]
 
-    def test_record_result_missing_winner_id(self, client):
-        match = self._setup_match(client)
-        resp = client.post(
+    def test_record_result_missing_winner_id(self, api_client):
+        match = self._setup_match(api_client)
+        resp = api_client.post(
             f"/api/v1/matches/{match.id}/result",
             json={"status": "Completed"},
         )
         assert resp.status_code == 400
         assert resp.get_json()["error"]["code"] == "BAD_REQUEST"
 
-    def test_record_result_match_not_found(self, client):
-        resp = client.post(
+    def test_record_result_winner_not_a_participant_returns_400(self, api_client):
+        """Supplying a winner_id that is not in the match returns BAD_REQUEST."""
+        match = self._setup_match(api_client)
+        resp = api_client.post(
+            f"/api/v1/matches/{match.id}/result",
+            json={"status": "Completed", "winner_id": 99999},
+        )
+        assert resp.status_code == 400
+        body = resp.get_json()
+        assert body["error"]["code"] == "BAD_REQUEST"
+        assert "valid_winner_ids" in body["error"]["details"]
+
+    def test_record_result_winner_id_none_returns_400(self, api_client):
+        """Explicitly passing winner_id: null returns BAD_REQUEST."""
+        match = self._setup_match(api_client)
+        resp = api_client.post(
+            f"/api/v1/matches/{match.id}/result",
+            json={"status": "Completed", "winner_id": None},
+        )
+        assert resp.status_code == 400
+        assert resp.get_json()["error"]["code"] == "BAD_REQUEST"
+
+    def test_record_result_match_not_found(self, api_client):
+        resp = api_client.post(
             "/api/v1/matches/9999/result",
             json={"status": "Completed", "winner_id": 1},
         )
         assert resp.status_code == 404
         assert resp.get_json()["error"]["code"] == "NOT_FOUND"
 
-    def test_record_result_no_json_content_type(self, client):
-        match = self._setup_match(client)
-        resp = client.post(f"/api/v1/matches/{match.id}/result", data="status=Completed")
+    def test_record_result_no_json_content_type(self, api_client):
+        match = self._setup_match(api_client)
+        resp = api_client.post(f"/api/v1/matches/{match.id}/result", data="status=Completed")
         assert resp.status_code == 415
+
+    def test_record_result_non_dict_body_returns_400(self, api_client):
+        match = self._setup_match(api_client)
+        resp = api_client.post(f"/api/v1/matches/{match.id}/result", json=["Completed", 1])
+        assert resp.status_code == 400
+        assert resp.get_json()["error"]["code"] == "BAD_REQUEST"
 
 
 # ---------------------------------------------------------------------------
