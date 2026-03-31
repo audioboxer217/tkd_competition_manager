@@ -11,7 +11,11 @@ import sys
 app_env = (os.environ.get("APP_ENV") or os.environ.get("app_env") or "").lower()
 if app_env == "prod":
     print("WARNING: APP_ENV is set to 'prod'. This will drop and recreate ALL production database tables.")
-    confirm = input("Type 'yes' to confirm: ")
+    try:
+        confirm = input("Type 'yes' to confirm: ")
+    except EOFError:
+        print("Aborted.")
+        sys.exit(1)
     if confirm.strip().lower() != "yes":
         print("Aborted.")
         sys.exit(0)
