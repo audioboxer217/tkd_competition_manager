@@ -4589,7 +4589,7 @@ class TestSeedDevDb:
     """Tests for scripts/seed_dev_db.py seed() function."""
 
     def test_seed_refuses_unset_app_env(self, monkeypatch):
-        """seed() must exit with code 1 when APP_ENV is not set."""
+        """seed() must exit with code 1 when APP_ENV is unset or empty."""
         monkeypatch.setenv("APP_ENV", "")
         monkeypatch.setenv("app_env", "")
 
