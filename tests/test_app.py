@@ -4662,3 +4662,392 @@ class TestSeedDevDb:
                 f"Match {match.id} number {match.match_number} is outside "
                 f"expected range ({base+1}–{base+99}) for ring {ring_id}"
             )
+
+
+# ---------------------------------------------------------------------------
+# Authentication Flow Tests
+# ---------------------------------------------------------------------------
+
+
+class TestAuthFlow:
+    """Tests covering login page rendering, login/logout flows, and login_required behavior."""
+
+    def test_login_page_renders(self, client):
+        """GET /login returns 200 with the sign-in form."""
+        with client.session_transaction() as sess:
+            sess.clear()
+
+        resp = client.get("/login")
+        assert resp.status_code == 200
+        assert b'type="email"' in resp.data
+        assert b'type="password"' in resp.data
+        assert b"Sign In" in resp.data
+
+    def test_login_page_shows_error_on_bad_credentials(self, client, monkeypatch):
+        """POST /login with wrong credentials shows an error message and stays on the page."""
+        from supabase_auth.errors import AuthApiError
+
+        def _raise(*_a, **_kw):
+            raise AuthApiError("Invalid login credentials", 400, None)
+
+        monkeypatch.setattr("app.supabase_client.auth.sign_in_with_password", _raise)
+
+        with client.session_transaction() as sess:
+            sess.clear()
+
+        resp = client.post("/login", data={"email": "bad@example.com", "password": "wrong"})
+        assert resp.status_code == 200
+        assert b"Invalid email or password" in resp.data
+
+    def test_login_page_shows_generic_error_on_unexpected_exception(self, client, monkeypatch):
+        """POST /login when supabase raises an unexpected error shows a generic error message."""
+
+        def _raise(*_a, **_kw):
+            raise RuntimeError("network down")
+
+        monkeypatch.setattr("app.supabase_client.auth.sign_in_with_password", _raise)
+
+        with client.session_transaction() as sess:
+            sess.clear()
+
+        resp = client.post("/login", data={"email": "a@b.com", "password": "pw"})
+        assert resp.status_code == 200
+        assert b"temporarily unavailable" in resp.data
+
+    def test_login_redirects_to_admin_on_success(self, client, monkeypatch):
+        """POST /login with valid credentials redirects to /admin."""
+        from types import SimpleNamespace
+
+        mock_resp = SimpleNamespace(
+            user=SimpleNamespace(email="admin@example.com", id="user-123")
+        )
+        monkeypatch.setattr(
+            "app.supabase_client.auth.sign_in_with_password",
+            lambda *_a, **_kw: mock_resp,
+        )
+
+        with client.session_transaction() as sess:
+            sess.clear()
+
+        resp = client.post(
+            "/login",
+            data={"email": "admin@example.com", "password": "correct"},
+            follow_redirects=False,
+        )
+        assert resp.status_code == 302
+        assert resp.headers["Location"].endswith("/admin")
+
+    def test_login_redirects_to_next_url_on_success(self, client, monkeypatch):
+        """POST /login with a valid `next` param redirects there instead of /admin."""
+        from types import SimpleNamespace
+
+        mock_resp = SimpleNamespace(
+            user=SimpleNamespace(email="admin@example.com", id="user-123")
+        )
+        monkeypatch.setattr(
+            "app.supabase_client.auth.sign_in_with_password",
+            lambda *_a, **_kw: mock_resp,
+        )
+
+        with client.session_transaction() as sess:
+            sess.clear()
+
+        resp = client.post(
+            "/login",
+            data={
+                "email": "admin@example.com",
+                "password": "correct",
+                "next": "/admin/schedule",
+            },
+            follow_redirects=False,
+        )
+        assert resp.status_code == 302
+        assert resp.headers["Location"].endswith("/admin/schedule")
+
+    def test_login_rejects_absolute_next_url(self, client, monkeypatch):
+        """POST /login with an absolute URL in `next` falls back to /admin (open-redirect guard)."""
+        from types import SimpleNamespace
+
+        mock_resp = SimpleNamespace(
+            user=SimpleNamespace(email="admin@example.com", id="user-123")
+        )
+        monkeypatch.setattr(
+            "app.supabase_client.auth.sign_in_with_password",
+            lambda *_a, **_kw: mock_resp,
+        )
+
+        with client.session_transaction() as sess:
+            sess.clear()
+
+        resp = client.post(
+            "/login",
+            data={
+                "email": "admin@example.com",
+                "password": "correct",
+                "next": "http://evil.com/steal",
+            },
+            follow_redirects=False,
+        )
+        assert resp.status_code == 302
+        location = resp.headers["Location"]
+        assert "evil.com" not in location
+        assert location.endswith("/admin")
+
+    def test_logout_clears_session_and_redirects_to_index(self, client):
+        """POST /logout clears the session and redirects to /."""
+        resp_before = client.get("/admin")
+        assert resp_before.status_code == 200
+
+        resp = client.post("/logout", follow_redirects=False)
+        assert resp.status_code == 302
+        assert resp.headers["Location"].endswith("/")
+
+        resp_after = client.get("/admin", follow_redirects=False)
+        assert resp_after.status_code == 302
+        assert "/login" in resp_after.headers["Location"]
+
+    def test_login_required_redirects_unauthenticated_non_htmx(self, client):
+        """Unauthenticated non-HTMX GET to a protected page gets a 302 redirect to /login."""
+        with client.session_transaction() as sess:
+            sess.clear()
+
+        resp = client.get("/admin", follow_redirects=False)
+        assert resp.status_code == 302
+        assert "/login" in resp.headers["Location"]
+
+    def test_login_required_redirect_includes_next_param(self, client):
+        """The /login redirect preserves the originally requested path as `next`."""
+        with client.session_transaction() as sess:
+            sess.clear()
+
+        resp = client.get("/admin", follow_redirects=False)
+        assert resp.status_code == 302
+        assert "next=/admin" in resp.headers["Location"]
+
+    def test_login_required_htmx_returns_401_with_hx_redirect(self, client):
+        """Unauthenticated HTMX request to a protected endpoint gets 401 + HX-Redirect."""
+        with client.session_transaction() as sess:
+            sess.clear()
+
+        resp = client.get("/admin", headers={"HX-Request": "true"})
+        assert resp.status_code == 401
+        assert "HX-Redirect" in resp.headers
+        assert "/login" in resp.headers["HX-Redirect"]
+
+    def test_authenticated_user_can_access_admin(self, client):
+        """The authenticated `client` fixture accesses /admin without redirection."""
+        resp = client.get("/admin")
+        assert resp.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Login-Required Route Protection
+# ---------------------------------------------------------------------------
+
+
+class TestLoginRequired:
+    """Verify that every @login_required route refuses unauthenticated non-HTMX access."""
+
+    def _unauth(self, client):
+        """Clear the session to simulate an unauthenticated user."""
+        with client.session_transaction() as sess:
+            sess.clear()
+
+    # --- Full-page admin routes ---
+
+    def test_admin_page_requires_login(self, client):
+        self._unauth(client)
+        resp = client.get("/admin", follow_redirects=False)
+        assert resp.status_code == 302
+        assert "/login" in resp.headers["Location"]
+
+    def test_admin_schedule_requires_login(self, client):
+        self._unauth(client)
+        resp = client.get("/admin/schedule", follow_redirects=False)
+        assert resp.status_code == 302
+        assert "/login" in resp.headers["Location"]
+
+    def test_admin_division_setup_requires_login(self, client):
+        div_id = _create_division(client).get_json()["id"]
+        self._unauth(client)
+        resp = client.get(f"/admin/divisions/{div_id}/setup", follow_redirects=False)
+        assert resp.status_code == 302
+        assert "/login" in resp.headers["Location"]
+
+    def test_admin_bracket_manage_requires_login(self, client):
+        div_id = _create_division(client).get_json()["id"]
+        self._unauth(client)
+        resp = client.get(f"/admin/divisions/{div_id}/bracket_manage", follow_redirects=False)
+        assert resp.status_code == 302
+        assert "/login" in resp.headers["Location"]
+
+    def test_admin_group_results_requires_login(self, client):
+        """group_results is a public read-only page – accessible without login."""
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+        self._unauth(client)
+        resp = client.get(f"/admin/divisions/{div_id}/group_results", follow_redirects=False)
+        assert resp.status_code == 200
+
+    def test_admin_score_manage_requires_login(self, client):
+        div_id = _create_division(client, "Poomsae Div", "poomsae").get_json()["id"]
+        self._unauth(client)
+        resp = client.get(f"/admin/divisions/{div_id}/score_manage", follow_redirects=False)
+        assert resp.status_code == 302
+        assert "/login" in resp.headers["Location"]
+
+    def test_scorekeeper_page_requires_login(self, client):
+        ring_id = _create_ring(client).get_json()["id"]
+        self._unauth(client)
+        resp = client.get(f"/ring/{ring_id}/scorekeeper", follow_redirects=False)
+        assert resp.status_code == 302
+        assert "/login" in resp.headers["Location"]
+
+    # --- HTMX fragment routes (respond with 401 + HX-Redirect) ---
+
+    def test_ui_rings_list_requires_login_htmx(self, client):
+        self._unauth(client)
+        resp = client.get("/ui/rings_list", headers={"HX-Request": "true"})
+        assert resp.status_code == 401
+        assert "HX-Redirect" in resp.headers
+
+    def test_ui_add_ring_requires_login_htmx(self, client):
+        self._unauth(client)
+        resp = client.post(
+            "/ui/rings",
+            data={"name": "Ring 1"},
+            headers={"HX-Request": "true"},
+        )
+        assert resp.status_code == 401
+        assert "HX-Redirect" in resp.headers
+
+    def test_ui_divisions_list_requires_login_htmx(self, client):
+        self._unauth(client)
+        resp = client.get("/ui/divisions_list", headers={"HX-Request": "true"})
+        assert resp.status_code == 401
+        assert "HX-Redirect" in resp.headers
+
+    def test_ui_add_division_requires_login_htmx(self, client):
+        self._unauth(client)
+        resp = client.post(
+            "/ui/divisions",
+            data={"name": "Test Div", "event_type": "kyorugi"},
+            headers={"HX-Request": "true"},
+        )
+        assert resp.status_code == 401
+        assert "HX-Redirect" in resp.headers
+
+    def test_ui_bracket_controls_requires_login_htmx(self, client):
+        div_id = _create_division(client).get_json()["id"]
+        self._unauth(client)
+        resp = client.get(
+            f"/ui/divisions/{div_id}/bracket_controls",
+            headers={"HX-Request": "true"},
+        )
+        assert resp.status_code == 401
+        assert "HX-Redirect" in resp.headers
+
+    def test_ui_scorekeeper_matches_requires_login_htmx(self, client):
+        ring_id = _create_ring(client).get_json()["id"]
+        self._unauth(client)
+        resp = client.get(
+            f"/ui/rings/{ring_id}/scorekeeper_matches",
+            headers={"HX-Request": "true"},
+        )
+        assert resp.status_code == 401
+        assert "HX-Redirect" in resp.headers
+
+
+# ---------------------------------------------------------------------------
+# Route Inventory – regression guard for route renames/removals
+# ---------------------------------------------------------------------------
+
+
+class TestRouteInventory:
+    """
+    Regression guard: verifies that every documented route is registered in the
+    Flask URL map.  If a route is renamed or removed this test will fail,
+    alerting the developer before any API migration proceeds.
+    """
+
+    # Canonical list of (method, sample_path) pairs for every route in the app.
+    # Dynamic segments use a concrete value (e.g. "1") so the URL-map adapter
+    # can resolve them to the correct endpoint.
+    EXPECTED_ROUTES = [
+        # Public pages / unauthenticated
+        ("GET", "/"),
+        ("GET", "/login"),
+        ("POST", "/login"),
+        ("POST", "/logout"),
+        ("GET", "/results"),
+        ("GET", "/schedule"),
+        # Protected admin pages
+        ("GET", "/admin"),
+        ("GET", "/admin/schedule"),
+        ("GET", "/admin/divisions/1/setup"),
+        ("GET", "/admin/divisions/1/bracket_manage"),
+        ("GET", "/admin/divisions/1/group_results"),
+        ("GET", "/admin/divisions/1/score_manage"),
+        # JSON / legacy API endpoints
+        ("GET", "/rings"),
+        ("POST", "/rings"),
+        ("GET", "/divisions"),
+        ("POST", "/divisions"),
+        ("DELETE", "/divisions/1"),
+        ("PUT", "/divisions/1"),
+        ("POST", "/matches/1/result"),
+        ("POST", "/divisions/1/generate_bracket"),
+        ("GET", "/divisions/1/bracket"),
+        ("GET", "/divisions/1/bracket_ui"),
+        # Scorekeeper page
+        ("GET", "/ring/1/scorekeeper"),
+        # Public HTMX fragment routes
+        ("GET", "/ui/public_rings"),
+        ("GET", "/ui/results_divisions"),
+        ("GET", "/ui/divisions/1/bracket"),
+        # Ring HTMX routes
+        ("POST", "/ui/rings"),
+        ("GET", "/ui/rings_list"),
+        ("DELETE", "/ui/rings/1"),
+        ("GET", "/ui/rings/1/scorekeeper_matches"),
+        ("GET", "/ui/rings/1/poomsae_divisions"),
+        # Division HTMX routes
+        ("POST", "/ui/divisions"),
+        ("GET", "/ui/divisions_list"),
+        ("DELETE", "/ui/divisions/1"),
+        ("GET", "/ui/divisions/1/bracket_controls"),
+        ("PATCH", "/ui/divisions/1/bracket_ring"),
+        ("POST", "/ui/divisions/1/poomsae_style"),
+        ("PATCH", "/ui/divisions/1/ring_assignment"),
+        ("PATCH", "/ui/divisions/1/event_status"),
+        ("GET", "/ui/divisions/1/group_results_fragment"),
+        ("GET", "/ui/divisions/1/poomsae_placements_fragment"),
+        # Division inline-name edit
+        ("GET", "/ui/divisions/1/name_form"),
+        ("GET", "/ui/divisions/1/name_display"),
+        ("PATCH", "/ui/divisions/1/name"),
+        # Competitor HTMX routes
+        ("POST", "/ui/divisions/1/competitors"),
+        ("GET", "/ui/divisions/1/competitors_list"),
+        ("DELETE", "/ui/divisions/1/competitors/1"),
+        ("POST", "/ui/divisions/1/competitors/1/move"),
+        ("POST", "/ui/divisions/1/competitors/1/score"),
+        # Match scheduling & result recording
+        ("PUT", "/matches/1/schedule"),
+        ("POST", "/ui/matches/1/result"),
+    ]
+
+    def test_all_expected_routes_are_registered(self, app):
+        """Every route in EXPECTED_ROUTES must be resolvable via the Flask URL map."""
+        adapter = app.url_map.bind("localhost")
+        missing = []
+        for method, path in self.EXPECTED_ROUTES:
+            try:
+                adapter.match(path, method=method)
+            except Exception:
+                missing.append(f"{method} {path}")
+
+        assert not missing, (
+            "The following routes are missing from the URL map "
+            "(they may have been renamed or removed):\n"
+            + "\n".join(f"  {r}" for r in missing)
+        )
