@@ -4,7 +4,8 @@ import re
 
 import pytest
 
-from app import Competitor, Division, Match, Ring, _abbrev_round, db
+from app import _abbrev_round
+from models import Competitor, Division, Match, Ring, db
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -4589,8 +4590,8 @@ class TestSeedDevDb:
 
     def test_seed_refuses_unset_app_env(self, monkeypatch):
         """seed() must exit with code 1 when APP_ENV is not set."""
-        monkeypatch.delenv("APP_ENV", raising=False)
-        monkeypatch.delenv("app_env", raising=False)
+        monkeypatch.setenv("APP_ENV", "")
+        monkeypatch.setenv("app_env", "")
 
         from scripts.seed_dev_db import seed
 
@@ -5104,7 +5105,7 @@ class TestRouteInventory:
 # API v1 — response helper unit tests
 # ---------------------------------------------------------------------------
 
-from app import error_response, success_response
+from api import error_response, success_response
 
 
 class TestApiResponseHelpers:

@@ -5,9 +5,10 @@ os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 
 import pytest
 
-from app import ApiToken, _generate_raw_token, _hash_token
+from api import _generate_raw_token, _hash_token
 from app import app as flask_app
-from app import db as _db
+from models import ApiToken
+from models import db as _db
 
 # Test user shared by both the session-based and Bearer-token test clients.
 _TEST_USER_EMAIL = "test@example.com"
