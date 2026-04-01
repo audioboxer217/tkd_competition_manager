@@ -6596,3 +6596,65 @@ class TestDeprecatedRouteHeaders:
         link = resp.headers.get("Link", "")
         assert "/api/v1" in link
         assert "successor-version" in link
+
+
+# ---------------------------------------------------------------------------
+# Additional validation for division_id coercion and same-competitor errors
+# ---------------------------------------------------------------------------
+
+
+class TestApiV1ValidationExtras:
+    """Additional field-level validation tests added in response to review feedback."""
+
+    # --- division_id coercion in POST /api/v1/matches ---
+
+    def test_create_match_string_division_id_returns_400(self, api_client):
+        resp = api_client.post("/api/v1/matches", json={"division_id": "abc"})
+        assert resp.status_code == 400
+        details = resp.get_json()["error"]["details"]
+        assert details.get("field") == "division_id"
+
+    def test_create_match_null_division_id_returns_400(self, api_client):
+        resp = api_client.post("/api/v1/matches", json={"division_id": None})
+        assert resp.status_code == 400
+        details = resp.get_json()["error"]["details"]
+        assert details.get("field") == "division_id"
+
+    # --- division_id coercion in PATCH /api/v1/competitors/<id> ---
+
+    def test_patch_competitor_string_division_id_returns_400(self, api_client):
+        div_id = api_client.post("/api/v1/divisions", json={"name": "D"}).get_json()["data"]["id"]
+        cid = api_client.post("/api/v1/competitors", json={"name": "Alice", "division_id": div_id}).get_json()["data"]["id"]
+        resp = api_client.patch(f"/api/v1/competitors/{cid}", json={"division_id": "abc"})
+        assert resp.status_code == 400
+        details = resp.get_json()["error"]["details"]
+        assert details.get("field") == "division_id"
+
+    def test_patch_competitor_null_division_id_returns_400(self, api_client):
+        div_id = api_client.post("/api/v1/divisions", json={"name": "D"}).get_json()["data"]["id"]
+        cid = api_client.post("/api/v1/competitors", json={"name": "Alice", "division_id": div_id}).get_json()["data"]["id"]
+        resp = api_client.patch(f"/api/v1/competitors/{cid}", json={"division_id": None})
+        assert resp.status_code == 400
+        details = resp.get_json()["error"]["details"]
+        assert details.get("field") == "division_id"
+
+    # --- same-competitor-id field in POST /api/v1/matches ---
+
+    def test_create_match_same_competitor_ids_includes_field(self, api_client):
+        div_id = api_client.post("/api/v1/divisions", json={"name": "D"}).get_json()["data"]["id"]
+        cid = api_client.post("/api/v1/competitors", json={"name": "Alice", "division_id": div_id}).get_json()["data"]["id"]
+        resp = api_client.post("/api/v1/matches", json={"division_id": div_id, "competitor1_id": cid, "competitor2_id": cid})
+        assert resp.status_code == 400
+        details = resp.get_json()["error"]["details"]
+        assert details.get("field") == "competitor1_id"
+
+    # --- same-competitor-id field in PATCH /api/v1/matches/<id> ---
+
+    def test_patch_match_same_competitor_ids_includes_field(self, api_client):
+        div_id = api_client.post("/api/v1/divisions", json={"name": "D"}).get_json()["data"]["id"]
+        cid = api_client.post("/api/v1/competitors", json={"name": "Alice", "division_id": div_id}).get_json()["data"]["id"]
+        match_id = api_client.post("/api/v1/matches", json={"division_id": div_id}).get_json()["data"]["id"]
+        resp = api_client.patch(f"/api/v1/matches/{match_id}", json={"competitor1_id": cid, "competitor2_id": cid})
+        assert resp.status_code == 400
+        details = resp.get_json()["error"]["details"]
+        assert details.get("field") == "competitor1_id"

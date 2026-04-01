@@ -87,8 +87,8 @@ def deprecated_route(f):
 
 # --- RING MANAGEMENT (DEPRECATED — use /api/v1/rings) ---
 @app.route("/rings", methods=["POST", "GET"])
-@login_required
 @deprecated_route
+@login_required
 def manage_rings():
     if request.method == "POST":
         data = request.json
@@ -103,8 +103,8 @@ def manage_rings():
 
 # --- DIVISION MANAGEMENT (DEPRECATED — use /api/v1/divisions) ---
 @app.route("/divisions", methods=["POST", "GET"])
-@login_required
 @deprecated_route
+@login_required
 def manage_divisions():
     if request.method == "POST":
         data = request.json
@@ -122,8 +122,8 @@ def manage_divisions():
 
 # DEPRECATED — use /api/v1/divisions/<id>
 @app.route("/divisions/<int:div_id>", methods=["DELETE", "PUT"])
-@login_required
 @deprecated_route
+@login_required
 def edit_division(div_id):
     division = Division.query.get_or_404(div_id)
     if request.method == "DELETE":
@@ -139,8 +139,8 @@ def edit_division(div_id):
 
 # DEPRECATED — use /api/v1/matches/<id>/result
 @app.route("/matches/<int:match_id>/result", methods=["POST"])
-@login_required
 @deprecated_route
+@login_required
 def record_result(match_id):
     match = Match.query.get_or_404(match_id)
     data = request.json
@@ -199,8 +199,8 @@ def _get_round_name(num_matches):
 
 # DEPRECATED — use /api/v1/divisions/<id>/generate_bracket
 @app.route("/divisions/<int:div_id>/generate_bracket", methods=["POST"])
-@login_required
 @deprecated_route
+@login_required
 def generate_bracket(div_id):
     Division.query.get_or_404(div_id)
     # Delete any existing matches before (re-)generating the bracket
@@ -1172,10 +1172,10 @@ def ui_bracket_ring_assignment(div_id):
     )
 
 
-# DEPRECATED — use /ui/matches/<id>/schedule HTMX fragment instead
+# DEPRECATED — use /api/v1/matches/<id> (PATCH) for ring/status updates
 @app.route("/matches/<int:match_id>/schedule", methods=["PUT"])
-@login_required
 @deprecated_route
+@login_required
 def schedule_match_htmx(match_id):
     match = Match.query.get_or_404(match_id)
 

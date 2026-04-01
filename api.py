@@ -496,8 +496,12 @@ def api_update_competitor(competitor_id):
         competitor.name = new_name
     if "division_id" in data:
         new_division_id = data.get("division_id")
-        if not new_division_id:
+        if new_division_id is None:
             return error_response("BAD_REQUEST", "division_id must be a valid integer.", details={"field": "division_id"}, status_code=400)
+        try:
+            new_division_id = int(new_division_id)
+        except (TypeError, ValueError):
+            return error_response("BAD_REQUEST", "division_id must be an integer.", details={"field": "division_id"}, status_code=400)
         division = db.session.get(Division, new_division_id)
         if not division:
             return error_response("NOT_FOUND", f"Division {new_division_id} not found.", status_code=404)
@@ -566,8 +570,12 @@ def api_create_match():
     if not isinstance(data, dict):
         return error_response("BAD_REQUEST", "Request JSON body must be an object.", status_code=400)
     division_id = data.get("division_id")
-    if not division_id:
+    if division_id is None:
         return error_response("BAD_REQUEST", "division_id is required.", details={"field": "division_id"}, status_code=400)
+    try:
+        division_id = int(division_id)
+    except (TypeError, ValueError):
+        return error_response("BAD_REQUEST", "division_id must be an integer.", details={"field": "division_id"}, status_code=400)
     division = db.session.get(Division, division_id)
     if not division:
         return error_response("NOT_FOUND", f"Division {division_id} not found.", status_code=404)
@@ -604,6 +612,7 @@ def api_create_match():
         return error_response(
             "BAD_REQUEST",
             "competitor1_id and competitor2_id must refer to different competitors.",
+            details={"field": "competitor1_id"},
             status_code=400,
         )
     next_match_id = data.get("next_match_id")
@@ -720,6 +729,7 @@ def api_update_match(match_id):
             return error_response(
                 "BAD_REQUEST",
                 "competitor1_id and competitor2_id must refer to different competitors.",
+                details={"field": "competitor1_id"},
                 status_code=400,
             )
     match.competitor1_id = new_competitor1_id
