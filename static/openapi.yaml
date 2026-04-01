@@ -1,0 +1,1125 @@
+openapi: "3.0.3"
+info:
+  title: TKD Competition Manager API
+  version: "1"
+  description: |
+    REST API for managing Taekwondo competitions — rings, divisions, competitors,
+    matches, and bracket generation.
+
+    All endpoints require a Bearer token obtained from an admin.  Include it in
+    every request:
+
+    ```
+    Authorization: Bearer <your-token>
+    ```
+
+    **Response envelope**
+
+    Every response is wrapped in a consistent JSON envelope:
+
+    - Success: `{"data": <payload>, "error": null}`
+    - Error:  `{"data": null, "error": {"code": "...", "message": "...", "details": {...}}}`
+
+servers:
+  - url: /api/v1
+    description: API v1
+
+security:
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+
+  schemas:
+    # ── Envelope wrappers ───────────────────────────────────────────────────────
+    ErrorDetail:
+      type: object
+      additionalProperties: true
+      example: {"field": "name", "valid_values": ["kyorugi", "poomsae"]}
+
+    ApiError:
+      type: object
+      required: [code, message, details]
+      properties:
+        code:
+          type: string
+          example: BAD_REQUEST
+        message:
+          type: string
+          example: Ring name is required.
+        details:
+          $ref: "#/components/schemas/ErrorDetail"
+
+    ErrorEnvelope:
+      type: object
+      required: [data, error]
+      properties:
+        data:
+          nullable: true
+          default: null
+        error:
+          $ref: "#/components/schemas/ApiError"
+
+    # ── Resource schemas ────────────────────────────────────────────────────────
+    Ring:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Ring 1
+
+    Division:
+      type: object
+      required: [id, name, event_type]
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Male - Black Belt - Under 70 kg
+        event_type:
+          type: string
+          enum: [kyorugi, poomsae]
+          example: kyorugi
+
+    Competitor:
+      type: object
+      required: [id, name, division_id]
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Jane Smith
+        division_id:
+          type: integer
+          example: 1
+        position:
+          type: integer
+          nullable: true
+          example: 2
+
+    Match:
+      type: object
+      required: [id, division_id, status]
+      properties:
+        id:
+          type: integer
+          example: 1
+        division_id:
+          type: integer
+          example: 1
+        ring_id:
+          type: integer
+          nullable: true
+          example: 2
+        competitor1_id:
+          type: integer
+          nullable: true
+          example: 3
+        competitor2_id:
+          type: integer
+          nullable: true
+          example: 4
+        winner_id:
+          type: integer
+          nullable: true
+          example: 3
+        next_match_id:
+          type: integer
+          nullable: true
+          example: 5
+        match_number:
+          type: integer
+          nullable: true
+          example: 1
+        status:
+          type: string
+          enum: [Pending, "In Progress", Completed, Disqualification, "Completed (Bye)"]
+          example: Pending
+        round_name:
+          type: string
+          nullable: true
+          example: Semi-Final
+        start_time:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2024-06-01T10:00:00+00:00"
+        end_time:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2024-06-01T10:05:00+00:00"
+
+    BracketMatch:
+      type: object
+      properties:
+        match_id:
+          type: integer
+          example: 1
+        round_name:
+          type: string
+          nullable: true
+          example: Semi-Final
+        status:
+          type: string
+          example: Pending
+        ring_id:
+          type: integer
+          nullable: true
+          example: 2
+        next_match_id:
+          type: integer
+          nullable: true
+          example: 5
+        competitor1:
+          nullable: true
+          $ref: "#/components/schemas/CompetitorRef"
+        competitor2:
+          nullable: true
+          $ref: "#/components/schemas/CompetitorRef"
+        winner_id:
+          type: integer
+          nullable: true
+          example: 3
+
+    CompetitorRef:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Jane Smith
+
+  # ── Reusable responses ──────────────────────────────────────────────────────
+  responses:
+    Unauthorized:
+      description: Missing or invalid Bearer token.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+          example:
+            data: null
+            error:
+              code: UNAUTHORIZED
+              message: Authorization header with Bearer token is required.
+              details: {}
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+          example:
+            data: null
+            error:
+              code: NOT_FOUND
+              message: Ring 99 not found.
+              details: {}
+    BadRequest:
+      description: Invalid request payload.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+          example:
+            data: null
+            error:
+              code: BAD_REQUEST
+              message: Ring name is required.
+              details: {field: name}
+    UnsupportedMediaType:
+      description: Content-Type must be application/json.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+
+# ── Paths ────────────────────────────────────────────────────────────────────
+paths:
+  # ── Rings ──────────────────────────────────────────────────────────────────
+  /rings:
+    get:
+      summary: List all rings
+      operationId: listRings
+      tags: [Rings]
+      responses:
+        "200":
+          description: A list of all rings.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Ring"
+                  error:
+                    nullable: true
+                    default: null
+              example:
+                data: [{id: 1, name: Ring 1}, {id: 2, name: Ring 2}]
+                error: null
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+    post:
+      summary: Create a ring
+      operationId: createRing
+      tags: [Rings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  example: Ring 3
+      responses:
+        "201":
+          description: Ring created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Ring"
+                  error:
+                    nullable: true
+                    default: null
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+
+  /rings/{ring_id}:
+    parameters:
+      - name: ring_id
+        in: path
+        required: true
+        schema:
+          type: integer
+
+    get:
+      summary: Get a ring
+      operationId: getRing
+      tags: [Rings]
+      responses:
+        "200":
+          description: Ring details.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Ring"
+                  error:
+                    nullable: true
+                    default: null
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    patch:
+      summary: Update a ring
+      operationId: updateRing
+      tags: [Rings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: Ring A
+      responses:
+        "200":
+          description: Updated ring.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Ring"
+                  error:
+                    nullable: true
+                    default: null
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+
+    delete:
+      summary: Delete a ring
+      operationId: deleteRing
+      tags: [Rings]
+      responses:
+        "200":
+          description: Ring deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        example: 1
+                      deleted:
+                        type: boolean
+                        example: true
+                  error:
+                    nullable: true
+                    default: null
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Divisions ──────────────────────────────────────────────────────────────
+  /divisions:
+    get:
+      summary: List all divisions
+      operationId: listDivisions
+      tags: [Divisions]
+      responses:
+        "200":
+          description: A list of all divisions.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Division"
+                  error:
+                    nullable: true
+                    default: null
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+    post:
+      summary: Create a division
+      operationId: createDivision
+      tags: [Divisions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  example: Male - Black Belt - Under 70 kg
+                event_type:
+                  type: string
+                  enum: [kyorugi, poomsae]
+                  default: kyorugi
+                  example: kyorugi
+      responses:
+        "201":
+          description: Division created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Division"
+                  error:
+                    nullable: true
+                    default: null
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+
+  /divisions/{div_id}:
+    parameters:
+      - name: div_id
+        in: path
+        required: true
+        schema:
+          type: integer
+
+    get:
+      summary: Get a division
+      operationId: getDivision
+      tags: [Divisions]
+      responses:
+        "200":
+          description: Division details.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Division"
+                  error:
+                    nullable: true
+                    default: null
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    put:
+      summary: Replace a division (full update)
+      operationId: replaceDivision
+      tags: [Divisions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  example: Female - Red Belt - Under 55 kg
+      responses:
+        "200":
+          description: Updated division.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Division"
+                  error:
+                    nullable: true
+                    default: null
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+
+    patch:
+      summary: Partially update a division
+      operationId: updateDivision
+      tags: [Divisions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: Female - Red Belt - Under 55 kg
+      responses:
+        "200":
+          description: Updated division.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Division"
+                  error:
+                    nullable: true
+                    default: null
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+
+    delete:
+      summary: Delete a division
+      operationId: deleteDivision
+      tags: [Divisions]
+      responses:
+        "200":
+          description: Division deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        example: 1
+                      deleted:
+                        type: boolean
+                        example: true
+                  error:
+                    nullable: true
+                    default: null
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /divisions/{div_id}/bracket:
+    parameters:
+      - name: div_id
+        in: path
+        required: true
+        schema:
+          type: integer
+
+    get:
+      summary: Get the bracket for a division
+      operationId: getBracket
+      tags: [Divisions]
+      responses:
+        "200":
+          description: Bracket matches for the division.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/BracketMatch"
+                  error:
+                    nullable: true
+                    default: null
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /divisions/{div_id}/generate_bracket:
+    parameters:
+      - name: div_id
+        in: path
+        required: true
+        schema:
+          type: integer
+
+    post:
+      summary: Generate (or regenerate) a bracket for a division
+      operationId: generateBracket
+      tags: [Divisions]
+      description: |
+        Creates a single-elimination bracket from the division's competitors
+        ordered by their `position` field.  Any existing matches are deleted first.
+        Requires at least 2 competitors.  Bye slots are auto-completed immediately.
+
+        The request body is optional — clients may omit it or send `{}`.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              example: {}
+      responses:
+        "201":
+          description: Bracket generated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      division_id:
+                        type: integer
+                        example: 1
+                      competitors:
+                        type: integer
+                        example: 4
+                      matches_created:
+                        type: integer
+                        example: 3
+                  error:
+                    nullable: true
+                    default: null
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Competitors ────────────────────────────────────────────────────────────
+  /competitors:
+    get:
+      summary: List competitors
+      operationId: listCompetitors
+      tags: [Competitors]
+      parameters:
+        - name: division_id
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Filter by division.
+      responses:
+        "200":
+          description: A list of competitors.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Competitor"
+                  error:
+                    nullable: true
+                    default: null
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+    post:
+      summary: Create a competitor
+      operationId: createCompetitor
+      tags: [Competitors]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, division_id]
+              properties:
+                name:
+                  type: string
+                  example: Jane Smith
+                division_id:
+                  type: integer
+                  example: 1
+                position:
+                  type: integer
+                  nullable: true
+                  example: 1
+      responses:
+        "201":
+          description: Competitor created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Competitor"
+                  error:
+                    nullable: true
+                    default: null
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+
+  /competitors/{competitor_id}:
+    parameters:
+      - name: competitor_id
+        in: path
+        required: true
+        schema:
+          type: integer
+
+    get:
+      summary: Get a competitor
+      operationId: getCompetitor
+      tags: [Competitors]
+      responses:
+        "200":
+          description: Competitor details.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Competitor"
+                  error:
+                    nullable: true
+                    default: null
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    patch:
+      summary: Update a competitor
+      operationId: updateCompetitor
+      tags: [Competitors]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: Jane Smith
+                division_id:
+                  type: integer
+                  example: 2
+                position:
+                  type: integer
+                  nullable: true
+                  example: 3
+      responses:
+        "200":
+          description: Updated competitor.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Competitor"
+                  error:
+                    nullable: true
+                    default: null
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+
+    delete:
+      summary: Delete a competitor
+      operationId: deleteCompetitor
+      tags: [Competitors]
+      responses:
+        "200":
+          description: Competitor deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        example: 1
+                      deleted:
+                        type: boolean
+                        example: true
+                  error:
+                    nullable: true
+                    default: null
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Matches ────────────────────────────────────────────────────────────────
+  /matches:
+    get:
+      summary: List matches
+      operationId: listMatches
+      tags: [Matches]
+      parameters:
+        - name: division_id
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Filter by division.
+      responses:
+        "200":
+          description: A list of matches.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Match"
+                  error:
+                    nullable: true
+                    default: null
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+    post:
+      summary: Create a match
+      operationId: createMatch
+      tags: [Matches]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [division_id]
+              properties:
+                division_id:
+                  type: integer
+                  example: 1
+                ring_id:
+                  type: integer
+                  nullable: true
+                  example: 2
+                competitor1_id:
+                  type: integer
+                  nullable: true
+                  example: 3
+                competitor2_id:
+                  type: integer
+                  nullable: true
+                  example: 4
+                next_match_id:
+                  type: integer
+                  nullable: true
+                  example: 5
+                round_name:
+                  type: string
+                  nullable: true
+                  example: Semi-Final
+                match_number:
+                  type: integer
+                  nullable: true
+                  example: 1
+      responses:
+        "201":
+          description: Match created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Match"
+                  error:
+                    nullable: true
+                    default: null
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+
+  /matches/{match_id}:
+    parameters:
+      - name: match_id
+        in: path
+        required: true
+        schema:
+          type: integer
+
+    get:
+      summary: Get a match
+      operationId: getMatch
+      tags: [Matches]
+      responses:
+        "200":
+          description: Match details.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Match"
+                  error:
+                    nullable: true
+                    default: null
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    patch:
+      summary: Update a match
+      operationId: updateMatch
+      tags: [Matches]
+      description: |
+        Updates editable match fields.  Terminal statuses (`Completed`,
+        `Disqualification`, `Completed (Bye)`) cannot be set here — use
+        `/matches/{match_id}/result` instead.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ring_id:
+                  type: integer
+                  nullable: true
+                  example: 2
+                status:
+                  type: string
+                  enum: [Pending, "In Progress"]
+                  example: "In Progress"
+                round_name:
+                  type: string
+                  nullable: true
+                  example: Quarter-Final
+                match_number:
+                  type: integer
+                  nullable: true
+                  example: 3
+                competitor1_id:
+                  type: integer
+                  nullable: true
+                  example: 1
+                competitor2_id:
+                  type: integer
+                  nullable: true
+                  example: 2
+      responses:
+        "200":
+          description: Updated match.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Match"
+                  error:
+                    nullable: true
+                    default: null
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+
+  /matches/{match_id}/result:
+    parameters:
+      - name: match_id
+        in: path
+        required: true
+        schema:
+          type: integer
+
+    post:
+      summary: Record a match result
+      operationId: recordMatchResult
+      tags: [Matches]
+      description: |
+        Sets the final status and winner for a match.  Automatically advances
+        the winner to the next bracket match (if one exists).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status, winner_id]
+              properties:
+                status:
+                  type: string
+                  enum: [Completed, Disqualification]
+                  example: Completed
+                winner_id:
+                  type: integer
+                  description: Must be a participant in this match.
+                  example: 3
+      responses:
+        "200":
+          description: Result recorded.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      match_id:
+                        type: integer
+                        example: 1
+                      status:
+                        type: string
+                        example: Completed
+                      winner_id:
+                        type: integer
+                        example: 3
+                  error:
+                    nullable: true
+                    default: null
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+
+tags:
+  - name: Rings
+    description: Physical competition rings.
+  - name: Divisions
+    description: Competition categories, bracket generation, and bracket retrieval.
+  - name: Competitors
+    description: Athletes registered within a division.
+  - name: Matches
+    description: Individual bouts within a bracket.
