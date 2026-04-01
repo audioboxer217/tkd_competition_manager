@@ -6331,3 +6331,278 @@ class TestApiV1EndToEndWorkflow:
         resp = client.put(f"/matches/{match.id}/schedule", data={"ring_sequence": "5"})
         assert resp.status_code == 200
         assert b"match" in resp.data.lower()
+
+
+# ---------------------------------------------------------------------------
+# Validation error details — field-level feedback
+# ---------------------------------------------------------------------------
+
+
+class TestValidationErrorDetails:
+    """Verify that validation errors include field-level details in error.details."""
+
+    # --- Rings ---
+
+    def test_create_ring_missing_name_includes_field(self, api_client):
+        resp = api_client.post("/api/v1/rings", json={})
+        assert resp.status_code == 400
+        details = resp.get_json()["error"]["details"]
+        assert details.get("field") == "name"
+
+    def test_patch_ring_empty_name_includes_field(self, api_client):
+        ring_id = api_client.post("/api/v1/rings", json={"name": "R"}).get_json()["data"]["id"]
+        resp = api_client.patch(f"/api/v1/rings/{ring_id}", json={"name": ""})
+        assert resp.status_code == 400
+        details = resp.get_json()["error"]["details"]
+        assert details.get("field") == "name"
+
+    # --- Divisions ---
+
+    def test_create_division_missing_name_includes_field(self, api_client):
+        resp = api_client.post("/api/v1/divisions", json={})
+        assert resp.status_code == 400
+        details = resp.get_json()["error"]["details"]
+        assert details.get("field") == "name"
+
+    def test_create_division_invalid_event_type_includes_field(self, api_client):
+        resp = api_client.post("/api/v1/divisions", json={"name": "D", "event_type": "invalid"})
+        assert resp.status_code == 400
+        error = resp.get_json()["error"]
+        details = error["details"]
+        assert details.get("field") == "event_type"
+        assert "valid_values" in details
+
+    def test_patch_division_empty_name_includes_field(self, api_client):
+        div_id = api_client.post("/api/v1/divisions", json={"name": "D"}).get_json()["data"]["id"]
+        resp = api_client.patch(f"/api/v1/divisions/{div_id}", json={"name": ""})
+        assert resp.status_code == 400
+        details = resp.get_json()["error"]["details"]
+        assert details.get("field") == "name"
+
+    # --- Competitors ---
+
+    def test_create_competitor_missing_name_includes_field(self, api_client):
+        div_id = api_client.post("/api/v1/divisions", json={"name": "D"}).get_json()["data"]["id"]
+        resp = api_client.post("/api/v1/competitors", json={"name": "", "division_id": div_id})
+        assert resp.status_code == 400
+        details = resp.get_json()["error"]["details"]
+        assert details.get("field") == "name"
+
+    def test_create_competitor_missing_division_id_includes_field(self, api_client):
+        resp = api_client.post("/api/v1/competitors", json={"name": "Alice"})
+        assert resp.status_code == 400
+        details = resp.get_json()["error"]["details"]
+        assert details.get("field") == "division_id"
+
+    def test_create_competitor_non_int_division_id_includes_field(self, api_client):
+        resp = api_client.post("/api/v1/competitors", json={"name": "Alice", "division_id": "abc"})
+        assert resp.status_code == 400
+        details = resp.get_json()["error"]["details"]
+        assert details.get("field") == "division_id"
+
+    def test_create_competitor_non_int_position_includes_field(self, api_client):
+        div_id = api_client.post("/api/v1/divisions", json={"name": "D"}).get_json()["data"]["id"]
+        resp = api_client.post("/api/v1/competitors", json={"name": "Alice", "division_id": div_id, "position": "abc"})
+        assert resp.status_code == 400
+        details = resp.get_json()["error"]["details"]
+        assert details.get("field") == "position"
+
+    def test_patch_competitor_empty_name_includes_field(self, api_client):
+        div_id = api_client.post("/api/v1/divisions", json={"name": "D"}).get_json()["data"]["id"]
+        cid = api_client.post("/api/v1/competitors", json={"name": "Alice", "division_id": div_id}).get_json()["data"]["id"]
+        resp = api_client.patch(f"/api/v1/competitors/{cid}", json={"name": ""})
+        assert resp.status_code == 400
+        details = resp.get_json()["error"]["details"]
+        assert details.get("field") == "name"
+
+    def test_patch_competitor_non_int_position_includes_field(self, api_client):
+        div_id = api_client.post("/api/v1/divisions", json={"name": "D"}).get_json()["data"]["id"]
+        cid = api_client.post("/api/v1/competitors", json={"name": "Alice", "division_id": div_id}).get_json()["data"]["id"]
+        resp = api_client.patch(f"/api/v1/competitors/{cid}", json={"position": "not-a-number"})
+        assert resp.status_code == 400
+        details = resp.get_json()["error"]["details"]
+        assert details.get("field") == "position"
+
+    def test_patch_competitor_integer_position_accepted(self, api_client):
+        div_id = api_client.post("/api/v1/divisions", json={"name": "D"}).get_json()["data"]["id"]
+        cid = api_client.post("/api/v1/competitors", json={"name": "Alice", "division_id": div_id}).get_json()["data"]["id"]
+        resp = api_client.patch(f"/api/v1/competitors/{cid}", json={"position": 3})
+        assert resp.status_code == 200
+        assert resp.get_json()["data"]["position"] == 3
+
+    # --- Matches ---
+
+    def test_create_match_missing_division_id_includes_field(self, api_client):
+        resp = api_client.post("/api/v1/matches", json={})
+        assert resp.status_code == 400
+        details = resp.get_json()["error"]["details"]
+        assert details.get("field") == "division_id"
+
+    def test_create_match_non_int_match_number_includes_field(self, api_client):
+        div_id = api_client.post("/api/v1/divisions", json={"name": "D"}).get_json()["data"]["id"]
+        resp = api_client.post("/api/v1/matches", json={"division_id": div_id, "match_number": "abc"})
+        assert resp.status_code == 400
+        details = resp.get_json()["error"]["details"]
+        assert details.get("field") == "match_number"
+
+    def test_patch_match_invalid_status_includes_field(self, api_client):
+        div_id = api_client.post("/api/v1/divisions", json={"name": "D"}).get_json()["data"]["id"]
+        match_id = api_client.post("/api/v1/matches", json={"division_id": div_id}).get_json()["data"]["id"]
+        resp = api_client.patch(f"/api/v1/matches/{match_id}", json={"status": "INVALID"})
+        assert resp.status_code == 400
+        details = resp.get_json()["error"]["details"]
+        assert details.get("field") == "status"
+        assert "valid_values" in details
+
+    def test_patch_match_terminal_status_includes_field(self, api_client):
+        div_id = api_client.post("/api/v1/divisions", json={"name": "D"}).get_json()["data"]["id"]
+        match_id = api_client.post("/api/v1/matches", json={"division_id": div_id}).get_json()["data"]["id"]
+        resp = api_client.patch(f"/api/v1/matches/{match_id}", json={"status": "Completed"})
+        assert resp.status_code == 400
+        details = resp.get_json()["error"]["details"]
+        assert details.get("field") == "status"
+        assert "allowed_statuses" in details
+
+    def test_patch_match_non_int_match_number_includes_field(self, api_client):
+        div_id = api_client.post("/api/v1/divisions", json={"name": "D"}).get_json()["data"]["id"]
+        match_id = api_client.post("/api/v1/matches", json={"division_id": div_id}).get_json()["data"]["id"]
+        resp = api_client.patch(f"/api/v1/matches/{match_id}", json={"match_number": "bad"})
+        assert resp.status_code == 400
+        details = resp.get_json()["error"]["details"]
+        assert details.get("field") == "match_number"
+
+    def test_patch_match_integer_match_number_accepted(self, api_client):
+        div_id = api_client.post("/api/v1/divisions", json={"name": "D"}).get_json()["data"]["id"]
+        match_id = api_client.post("/api/v1/matches", json={"division_id": div_id}).get_json()["data"]["id"]
+        resp = api_client.patch(f"/api/v1/matches/{match_id}", json={"match_number": 42})
+        assert resp.status_code == 200
+        assert resp.get_json()["data"]["match_number"] == 42
+
+    # --- Match result ---
+
+    def test_record_result_invalid_status_includes_field(self, api_client):
+        div_id = api_client.post("/api/v1/divisions", json={"name": "D"}).get_json()["data"]["id"]
+        for name in ("Alice", "Bob"):
+            api_client.post("/api/v1/competitors", json={"name": name, "division_id": div_id})
+        api_client.post(f"/api/v1/divisions/{div_id}/generate_bracket")
+        from models import Match
+        match = Match.query.filter_by(division_id=div_id).first()
+        resp = api_client.post(f"/api/v1/matches/{match.id}/result", json={"status": "BAD", "winner_id": match.competitor1_id})
+        assert resp.status_code == 400
+        details = resp.get_json()["error"]["details"]
+        assert details.get("field") == "status"
+
+    def test_record_result_missing_winner_id_includes_field(self, api_client):
+        div_id = api_client.post("/api/v1/divisions", json={"name": "D"}).get_json()["data"]["id"]
+        for name in ("Alice", "Bob"):
+            api_client.post("/api/v1/competitors", json={"name": name, "division_id": div_id})
+        api_client.post(f"/api/v1/divisions/{div_id}/generate_bracket")
+        from models import Match
+        match = Match.query.filter_by(division_id=div_id).first()
+        resp = api_client.post(f"/api/v1/matches/{match.id}/result", json={"status": "Completed"})
+        assert resp.status_code == 400
+        details = resp.get_json()["error"]["details"]
+        assert details.get("field") == "winner_id"
+
+    def test_record_result_invalid_winner_id_includes_field(self, api_client):
+        div_id = api_client.post("/api/v1/divisions", json={"name": "D"}).get_json()["data"]["id"]
+        for name in ("Alice", "Bob"):
+            api_client.post("/api/v1/competitors", json={"name": name, "division_id": div_id})
+        api_client.post(f"/api/v1/divisions/{div_id}/generate_bracket")
+        from models import Match
+        match = Match.query.filter_by(division_id=div_id).first()
+        resp = api_client.post(f"/api/v1/matches/{match.id}/result", json={"status": "Completed", "winner_id": 99999})
+        assert resp.status_code == 400
+        details = resp.get_json()["error"]["details"]
+        assert details.get("field") == "winner_id"
+        assert "valid_winner_ids" in details
+
+
+# ---------------------------------------------------------------------------
+# Deprecated legacy route headers
+# ---------------------------------------------------------------------------
+
+
+class TestDeprecatedRouteHeaders:
+    """Verify that all legacy routes return the Deprecation: true header."""
+
+    def test_get_rings_has_deprecation_header(self, client):
+        resp = client.get("/rings")
+        assert resp.headers.get("Deprecation") == "true"
+
+    def test_post_rings_has_deprecation_header(self, client):
+        resp = client.post("/rings", json={"name": "R1"})
+        assert resp.headers.get("Deprecation") == "true"
+
+    def test_get_divisions_has_deprecation_header(self, client):
+        resp = client.get("/divisions")
+        assert resp.headers.get("Deprecation") == "true"
+
+    def test_post_divisions_has_deprecation_header(self, client):
+        resp = client.post("/divisions", json={"name": "D1"})
+        assert resp.headers.get("Deprecation") == "true"
+
+    def test_put_division_has_deprecation_header(self, client):
+        div_id = client.post("/divisions", json={"name": "D"}).get_json()["id"]
+        resp = client.put(f"/divisions/{div_id}", json={"name": "New"})
+        assert resp.headers.get("Deprecation") == "true"
+
+    def test_delete_division_has_deprecation_header(self, client):
+        div_id = client.post("/divisions", json={"name": "D"}).get_json()["id"]
+        resp = client.delete(f"/divisions/{div_id}")
+        assert resp.headers.get("Deprecation") == "true"
+
+    def test_match_result_has_deprecation_header(self, client):
+        div_id = client.post("/divisions", json={"name": "D"}).get_json()["id"]
+        from tests.test_app import _add_competitors, _generate_bracket
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _generate_bracket(client, div_id)
+        from models import Match
+        match = Match.query.filter_by(division_id=div_id).first()
+        resp = client.post(
+            f"/matches/{match.id}/result",
+            json={"status": "Completed", "winner_id": match.competitor1_id},
+        )
+        assert resp.headers.get("Deprecation") == "true"
+
+    def test_generate_bracket_has_deprecation_header(self, client):
+        div_id = client.post("/divisions", json={"name": "D"}).get_json()["id"]
+        from tests.test_app import _add_competitors
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        resp = client.post(f"/divisions/{div_id}/generate_bracket")
+        assert resp.headers.get("Deprecation") == "true"
+
+    def test_get_bracket_has_deprecation_header(self, client):
+        div_id = client.post("/divisions", json={"name": "D"}).get_json()["id"]
+        from tests.test_app import _add_competitors, _generate_bracket
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _generate_bracket(client, div_id)
+        resp = client.get(f"/divisions/{div_id}/bracket")
+        assert resp.headers.get("Deprecation") == "true"
+
+    def test_bracket_ui_has_deprecation_header(self, client):
+        div_id = client.post("/divisions", json={"name": "D"}).get_json()["id"]
+        from tests.test_app import _add_competitors, _generate_bracket
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _generate_bracket(client, div_id)
+        resp = client.get(f"/divisions/{div_id}/bracket_ui")
+        assert resp.headers.get("Deprecation") == "true"
+
+    def test_schedule_match_has_deprecation_header(self, client):
+        div_id = client.post("/divisions", json={"name": "D"}).get_json()["id"]
+        ring_id = client.post("/rings", json={"name": "Ring 1"}).get_json()["id"]
+        from tests.test_app import _add_competitors, _generate_bracket
+        _add_competitors(client, div_id, ["Alice", "Bob"])
+        _generate_bracket(client, div_id)
+        client.patch(f"/ui/divisions/{div_id}/bracket_ring", data={"ring_id": ring_id})
+        from models import Match
+        match = Match.query.filter_by(division_id=div_id).first()
+        resp = client.put(f"/matches/{match.id}/schedule", data={"ring_sequence": "5"})
+        assert resp.headers.get("Deprecation") == "true"
+
+    def test_deprecation_header_has_link(self, client):
+        """The successor-version Link header points to /api/v1."""
+        resp = client.get("/rings")
+        link = resp.headers.get("Link", "")
+        assert "/api/v1" in link
+        assert "successor-version" in link
