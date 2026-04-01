@@ -80,12 +80,13 @@ def api_login_required(f):
 def enforce_json_content_type():
     """Reject POST/PUT/PATCH requests that include a body without application/json Content-Type.
 
-    Body-less requests (Content-Length absent or zero) are allowed without a
-    Content-Type header so that action endpoints such as ``generate_bracket``
-    can be called without an explicit request body.
+    Body-less requests are allowed without a Content-Type header so that action
+    endpoints such as ``generate_bracket`` can be called without an explicit
+    request body.  Body presence is detected by reading the raw data (which
+    also handles chunked transfer encoding where Content-Length is absent).
     """
     if request.method in ("POST", "PUT", "PATCH"):
-        if request.content_length and not request.is_json:
+        if request.get_data(cache=True) and not request.is_json:
             return error_response(
                 "UNSUPPORTED_MEDIA_TYPE",
                 "Content-Type must be application/json.",

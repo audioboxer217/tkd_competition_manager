@@ -6239,7 +6239,7 @@ class TestApiV1EndToEndWorkflow:
         ring_id = api_client.post("/api/v1/rings", json={"name": "Ring 1"}).get_json()["data"]["id"]
         div_id = api_client.post("/api/v1/divisions", json={"name": "Men Under 80kg"}).get_json()["data"]["id"]
 
-        # 2. Add four competitors
+        # 2. Add four competitors and track their IDs
         competitor_ids = []
         for name in ("Alice", "Bob", "Carol", "Dave"):
             cid = api_client.post("/api/v1/competitors", json={"name": name, "division_id": div_id}).get_json()["data"]["id"]
@@ -6262,6 +6262,12 @@ class TestApiV1EndToEndWorkflow:
         final_matches = [m for m in bracket if m["round_name"] == "Final"]
         assert len(semi_finals) == 2
         assert len(final_matches) == 1
+
+        # All four competitors should appear exactly once in the semi-final slots
+        bracket_competitor_ids = {
+            m["competitor1"]["id"] for m in semi_finals if m["competitor1"]
+        } | {m["competitor2"]["id"] for m in semi_finals if m["competitor2"]}
+        assert bracket_competitor_ids == set(competitor_ids)
 
         # 5. Assign ring to bracket matches via PATCH (tests PATCH endpoint integration)
         for m in semi_finals:
