@@ -7,7 +7,19 @@ from functools import wraps
 from urllib.parse import urljoin, urlparse
 
 from dotenv import load_dotenv
-from flask import Flask, Response, jsonify, make_response, redirect, render_template, request, session, url_for
+from flask import (
+    Flask,
+    Response,
+    jsonify,
+    make_response,
+    redirect,
+    render_template,
+    request,
+    send_from_directory,
+    session,
+    url_for,
+)
+from flask_swagger_ui import get_swaggerui_blueprint
 from flask_wtf.csrf import CSRFProtect
 from markupsafe import escape
 from sqlalchemy import case
@@ -1674,6 +1686,18 @@ def admin_revoke_api_token(token_id):
 
 # Register the API v1 blueprint
 app.register_blueprint(api_v1)
+
+# Serve the OpenAPI spec
+@app.route("/api/v1/openapi.yaml")
+def openapi_spec():
+    return send_from_directory("static", "openapi.yaml", mimetype="application/yaml")
+
+# Register the Swagger UI blueprint
+SWAGGER_URL = "/api/docs"
+API_URL = "/api/v1/openapi.yaml"
+swaggerui_blueprint = get_swaggerui_blueprint(SWAGGER_URL, API_URL)
+csrf.exempt(swaggerui_blueprint)
+app.register_blueprint(swaggerui_blueprint, url_prefix=SWAGGER_URL)
 
 
 # Initialize DB for testing
