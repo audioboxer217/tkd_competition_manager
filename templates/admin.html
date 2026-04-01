@@ -166,6 +166,9 @@
 
     <h1 style="text-align: center; color: #0f172a;">Admin Dashboard</h1>
     <div style="display: flex; justify-content: flex-end; max-width: 1200px; margin: 0 auto 10px auto; flex-wrap: wrap;">
+        <a href="/admin/api-tokens"
+            style="display: inline-block; background: #334155; color: white; font-size: 0.875rem; padding: 6px 14px; border-radius: 4px; text-decoration: none; margin-right: 8px;">API
+            Tokens</a>
         <form method="POST" action="/logout" style="display: inline;">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" style="background: #64748b; font-size: 0.875rem; padding: 6px 14px;">Logout</button>
