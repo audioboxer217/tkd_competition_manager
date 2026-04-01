@@ -146,7 +146,7 @@ def api_create_ring():
         return error_response("BAD_REQUEST", "Request JSON body must be an object.", status_code=400)
     name = (data.get("name") or "").strip()
     if not name:
-        return error_response("BAD_REQUEST", "Ring name is required.", status_code=400)
+        return error_response("BAD_REQUEST", "Ring name is required.", details={"field": "name"}, status_code=400)
     new_ring = Ring(name=name)
     db.session.add(new_ring)
     db.session.commit()
@@ -174,7 +174,7 @@ def api_update_ring(ring_id):
     if "name" in data:
         new_name = (data.get("name") or "").strip()
         if not new_name:
-            return error_response("BAD_REQUEST", "Ring name is required.", status_code=400)
+            return error_response("BAD_REQUEST", "Ring name is required.", details={"field": "name"}, status_code=400)
         ring.name = new_name
     db.session.commit()
     return success_response({"id": ring.id, "name": ring.name})
@@ -209,13 +209,13 @@ def api_create_division():
         return error_response("BAD_REQUEST", "Request JSON body must be an object.", status_code=400)
     name = (data.get("name") or "").strip()
     if not name:
-        return error_response("BAD_REQUEST", "Division name is required.", status_code=400)
+        return error_response("BAD_REQUEST", "Division name is required.", details={"field": "name"}, status_code=400)
     event_type = data.get("event_type", "kyorugi")
     if event_type not in VALID_EVENT_TYPES:
         return error_response(
             "BAD_REQUEST",
             "Invalid event type.",
-            details={"valid_values": sorted(VALID_EVENT_TYPES)},
+            details={"field": "event_type", "valid_values": sorted(VALID_EVENT_TYPES)},
             status_code=400,
         )
     new_division = Division(name=name, event_type=event_type)
@@ -247,7 +247,7 @@ def api_update_division(div_id):
         return error_response("BAD_REQUEST", "Request JSON body must be an object.", status_code=400)
     new_name = (data.get("name") or "").strip()
     if not new_name:
-        return error_response("BAD_REQUEST", "Division name is required.", status_code=400)
+        return error_response("BAD_REQUEST", "Division name is required.", details={"field": "name"}, status_code=400)
     division.name = new_name
     db.session.commit()
     return success_response({"id": division.id, "name": division.name, "event_type": division.event_type})
@@ -437,14 +437,14 @@ def api_create_competitor():
         return error_response("BAD_REQUEST", "Request JSON body must be an object.", status_code=400)
     name = (data.get("name") or "").strip()
     if not name:
-        return error_response("BAD_REQUEST", "Competitor name is required.", status_code=400)
+        return error_response("BAD_REQUEST", "Competitor name is required.", details={"field": "name"}, status_code=400)
     raw_division_id = data.get("division_id")
     if raw_division_id is None:
-        return error_response("BAD_REQUEST", "division_id is required.", status_code=400)
+        return error_response("BAD_REQUEST", "division_id is required.", details={"field": "division_id"}, status_code=400)
     try:
         division_id = int(raw_division_id)
     except (TypeError, ValueError):
-        return error_response("BAD_REQUEST", "division_id must be an integer.", status_code=400)
+        return error_response("BAD_REQUEST", "division_id must be an integer.", details={"field": "division_id"}, status_code=400)
     division = db.session.get(Division, division_id)
     if not division:
         return error_response("NOT_FOUND", f"Division {division_id} not found.", status_code=404)
@@ -454,7 +454,7 @@ def api_create_competitor():
         try:
             position = int(raw_position)
         except (TypeError, ValueError):
-            return error_response("BAD_REQUEST", "position must be an integer.", status_code=400)
+            return error_response("BAD_REQUEST", "position must be an integer.", details={"field": "position"}, status_code=400)
     new_competitor = Competitor(name=name, division_id=division_id, position=position)
     db.session.add(new_competitor)
     db.session.commit()
@@ -492,18 +492,24 @@ def api_update_competitor(competitor_id):
     if "name" in data:
         new_name = (data.get("name") or "").strip()
         if not new_name:
-            return error_response("BAD_REQUEST", "Competitor name is required.", status_code=400)
+            return error_response("BAD_REQUEST", "Competitor name is required.", details={"field": "name"}, status_code=400)
         competitor.name = new_name
     if "division_id" in data:
         new_division_id = data.get("division_id")
         if not new_division_id:
-            return error_response("BAD_REQUEST", "division_id must be a valid integer.", status_code=400)
+            return error_response("BAD_REQUEST", "division_id must be a valid integer.", details={"field": "division_id"}, status_code=400)
         division = db.session.get(Division, new_division_id)
         if not division:
             return error_response("NOT_FOUND", f"Division {new_division_id} not found.", status_code=404)
         competitor.division_id = new_division_id
     if "position" in data:
-        competitor.position = data.get("position")
+        raw_position = data.get("position")
+        if raw_position is not None:
+            try:
+                raw_position = int(raw_position)
+            except (TypeError, ValueError):
+                return error_response("BAD_REQUEST", "position must be an integer.", details={"field": "position"}, status_code=400)
+        competitor.position = raw_position
     db.session.commit()
     return success_response(
         {"id": competitor.id, "name": competitor.name, "division_id": competitor.division_id, "position": competitor.position}
@@ -561,7 +567,7 @@ def api_create_match():
         return error_response("BAD_REQUEST", "Request JSON body must be an object.", status_code=400)
     division_id = data.get("division_id")
     if not division_id:
-        return error_response("BAD_REQUEST", "division_id is required.", status_code=400)
+        return error_response("BAD_REQUEST", "division_id is required.", details={"field": "division_id"}, status_code=400)
     division = db.session.get(Division, division_id)
     if not division:
         return error_response("NOT_FOUND", f"Division {division_id} not found.", status_code=404)
@@ -578,6 +584,7 @@ def api_create_match():
             return error_response(
                 "BAD_REQUEST",
                 f"Competitor {competitor1_id} does not belong to division {division_id}.",
+                details={"field": "competitor1_id"},
                 status_code=400,
             )
     competitor2_id = data.get("competitor2_id")
@@ -590,6 +597,7 @@ def api_create_match():
             return error_response(
                 "BAD_REQUEST",
                 f"Competitor {competitor2_id} does not belong to division {division_id}.",
+                details={"field": "competitor2_id"},
                 status_code=400,
             )
     if competitor1_id is not None and competitor2_id is not None and competitor1_id == competitor2_id:
@@ -602,7 +610,13 @@ def api_create_match():
     if next_match_id is not None and not db.session.get(Match, next_match_id):
         return error_response("NOT_FOUND", f"Match {next_match_id} not found.", status_code=404)
     round_name = (data.get("round_name") or "").strip() or None
-    match_number = data.get("match_number")
+    raw_match_number = data.get("match_number")
+    match_number = None
+    if raw_match_number is not None:
+        try:
+            match_number = int(raw_match_number)
+        except (TypeError, ValueError):
+            return error_response("BAD_REQUEST", "match_number must be an integer.", details={"field": "match_number"}, status_code=400)
     new_match = Match(
         division_id=division_id,
         ring_id=ring_id,
@@ -647,7 +661,7 @@ def api_update_match(match_id):
             return error_response(
                 "BAD_REQUEST",
                 "Invalid status.",
-                details={"valid_values": sorted(valid_statuses)},
+                details={"field": "status", "valid_values": sorted(valid_statuses)},
                 status_code=400,
             )
         terminal_statuses = {"Completed", "Disqualification", "Completed (Bye)"}
@@ -655,14 +669,20 @@ def api_update_match(match_id):
             return error_response(
                 "BAD_REQUEST",
                 "Cannot set a terminal status via PATCH. Use the /matches/<id>/result endpoint to complete a match.",
-                details={"allowed_statuses": sorted(valid_statuses - terminal_statuses)},
+                details={"field": "status", "allowed_statuses": sorted(valid_statuses - terminal_statuses)},
                 status_code=400,
             )
         match.status = new_status
     if "round_name" in data:
         match.round_name = (data.get("round_name") or "").strip() or None
     if "match_number" in data:
-        match.match_number = data.get("match_number")
+        raw_match_number = data.get("match_number")
+        if raw_match_number is not None:
+            try:
+                raw_match_number = int(raw_match_number)
+            except (TypeError, ValueError):
+                return error_response("BAD_REQUEST", "match_number must be an integer.", details={"field": "match_number"}, status_code=400)
+        match.match_number = raw_match_number
     # Prepare new competitor IDs so we can validate before assigning
     new_competitor1_id = match.competitor1_id
     new_competitor2_id = match.competitor2_id
@@ -676,6 +696,7 @@ def api_update_match(match_id):
                 return error_response(
                     "BAD_REQUEST",
                     f"Competitor {competitor1_id} does not belong to this match's division.",
+                    details={"field": "competitor1_id"},
                     status_code=400,
                 )
         new_competitor1_id = competitor1_id
@@ -689,6 +710,7 @@ def api_update_match(match_id):
                 return error_response(
                     "BAD_REQUEST",
                     f"Competitor {competitor2_id} does not belong to this match's division.",
+                    details={"field": "competitor2_id"},
                     status_code=400,
                 )
         new_competitor2_id = competitor2_id
@@ -724,18 +746,18 @@ def api_record_result(match_id):
         return error_response(
             "BAD_REQUEST",
             "Invalid status.",
-            details={"valid_values": sorted(valid_statuses)},
+            details={"field": "status", "valid_values": sorted(valid_statuses)},
             status_code=400,
         )
     if not winner_id:
-        return error_response("BAD_REQUEST", "winner_id is required.", status_code=400)
+        return error_response("BAD_REQUEST", "winner_id is required.", details={"field": "winner_id"}, status_code=400)
 
     valid_competitors = {match.competitor1_id, match.competitor2_id} - {None}
     if winner_id not in valid_competitors:
         return error_response(
             "BAD_REQUEST",
             "winner_id must be a participant in this match.",
-            details={"valid_winner_ids": sorted(valid_competitors)},
+            details={"field": "winner_id", "valid_winner_ids": sorted(valid_competitors)},
             status_code=400,
         )
 
