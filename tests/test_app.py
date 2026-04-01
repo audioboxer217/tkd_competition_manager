@@ -6658,3 +6658,85 @@ class TestApiV1ValidationExtras:
         assert resp.status_code == 400
         details = resp.get_json()["error"]["details"]
         assert details.get("field") == "competitor1_id"
+
+
+class TestApiV1CompetitorIdCoercion:
+    """Competitor ID integer coercion in POST /api/v1/matches and PATCH /api/v1/matches/<id>."""
+
+    # --- api_create_match: competitor IDs ---
+
+    def test_create_match_string_competitor1_id_returns_400(self, api_client):
+        div_id = api_client.post("/api/v1/divisions", json={"name": "D"}).get_json()["data"]["id"]
+        resp = api_client.post("/api/v1/matches", json={"division_id": div_id, "competitor1_id": "abc"})
+        assert resp.status_code == 400
+        assert resp.get_json()["error"]["details"]["field"] == "competitor1_id"
+
+    def test_create_match_string_competitor2_id_returns_400(self, api_client):
+        div_id = api_client.post("/api/v1/divisions", json={"name": "D"}).get_json()["data"]["id"]
+        resp = api_client.post("/api/v1/matches", json={"division_id": div_id, "competitor2_id": "abc"})
+        assert resp.status_code == 400
+        assert resp.get_json()["error"]["details"]["field"] == "competitor2_id"
+
+    # --- api_update_match: competitor IDs ---
+
+    def test_patch_match_string_competitor1_id_returns_400(self, api_client):
+        div_id = api_client.post("/api/v1/divisions", json={"name": "D"}).get_json()["data"]["id"]
+        match_id = api_client.post("/api/v1/matches", json={"division_id": div_id}).get_json()["data"]["id"]
+        resp = api_client.patch(f"/api/v1/matches/{match_id}", json={"competitor1_id": "abc"})
+        assert resp.status_code == 400
+        assert resp.get_json()["error"]["details"]["field"] == "competitor1_id"
+
+    def test_patch_match_string_competitor2_id_returns_400(self, api_client):
+        div_id = api_client.post("/api/v1/divisions", json={"name": "D"}).get_json()["data"]["id"]
+        match_id = api_client.post("/api/v1/matches", json={"division_id": div_id}).get_json()["data"]["id"]
+        resp = api_client.patch(f"/api/v1/matches/{match_id}", json={"competitor2_id": "abc"})
+        assert resp.status_code == 400
+        assert resp.get_json()["error"]["details"]["field"] == "competitor2_id"
+
+    # --- api_record_result: winner_id coercion ---
+
+    def test_record_result_string_winner_id_coerced(self, api_client):
+        """A numeric string winner_id is coerced to int and accepted."""
+        div_id = api_client.post("/api/v1/divisions", json={"name": "D"}).get_json()["data"]["id"]
+        c1 = api_client.post("/api/v1/competitors", json={"name": "Alice", "division_id": div_id}).get_json()["data"]["id"]
+        c2 = api_client.post("/api/v1/competitors", json={"name": "Bob", "division_id": div_id}).get_json()["data"]["id"]
+        match_id = api_client.post(
+            "/api/v1/matches",
+            json={"division_id": div_id, "competitor1_id": c1, "competitor2_id": c2},
+        ).get_json()["data"]["id"]
+        resp = api_client.post(
+            f"/api/v1/matches/{match_id}/result",
+            json={"status": "Completed", "winner_id": str(c1)},
+        )
+        assert resp.status_code == 200
+        assert resp.get_json()["data"]["winner_id"] == c1
+
+    def test_record_result_nonnumeric_winner_id_returns_400(self, api_client):
+        div_id = api_client.post("/api/v1/divisions", json={"name": "D"}).get_json()["data"]["id"]
+        c1 = api_client.post("/api/v1/competitors", json={"name": "Alice", "division_id": div_id}).get_json()["data"]["id"]
+        c2 = api_client.post("/api/v1/competitors", json={"name": "Bob", "division_id": div_id}).get_json()["data"]["id"]
+        match_id = api_client.post(
+            "/api/v1/matches",
+            json={"division_id": div_id, "competitor1_id": c1, "competitor2_id": c2},
+        ).get_json()["data"]["id"]
+        resp = api_client.post(
+            f"/api/v1/matches/{match_id}/result",
+            json={"status": "Completed", "winner_id": "bad"},
+        )
+        assert resp.status_code == 400
+        assert resp.get_json()["error"]["details"]["field"] == "winner_id"
+
+    def test_record_result_null_winner_id_returns_400(self, api_client):
+        div_id = api_client.post("/api/v1/divisions", json={"name": "D"}).get_json()["data"]["id"]
+        c1 = api_client.post("/api/v1/competitors", json={"name": "Alice", "division_id": div_id}).get_json()["data"]["id"]
+        c2 = api_client.post("/api/v1/competitors", json={"name": "Bob", "division_id": div_id}).get_json()["data"]["id"]
+        match_id = api_client.post(
+            "/api/v1/matches",
+            json={"division_id": div_id, "competitor1_id": c1, "competitor2_id": c2},
+        ).get_json()["data"]["id"]
+        resp = api_client.post(
+            f"/api/v1/matches/{match_id}/result",
+            json={"status": "Completed", "winner_id": None},
+        )
+        assert resp.status_code == 400
+        assert resp.get_json()["error"]["details"]["field"] == "winner_id"

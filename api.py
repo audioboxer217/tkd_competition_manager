@@ -585,6 +585,10 @@ def api_create_match():
     competitor1_id = data.get("competitor1_id")
     competitor1 = None
     if competitor1_id is not None:
+        try:
+            competitor1_id = int(competitor1_id)
+        except (TypeError, ValueError):
+            return error_response("BAD_REQUEST", "competitor1_id must be an integer.", details={"field": "competitor1_id"}, status_code=400)
         competitor1 = db.session.get(Competitor, competitor1_id)
         if not competitor1:
             return error_response("NOT_FOUND", f"Competitor {competitor1_id} not found.", status_code=404)
@@ -598,6 +602,10 @@ def api_create_match():
     competitor2_id = data.get("competitor2_id")
     competitor2 = None
     if competitor2_id is not None:
+        try:
+            competitor2_id = int(competitor2_id)
+        except (TypeError, ValueError):
+            return error_response("BAD_REQUEST", "competitor2_id must be an integer.", details={"field": "competitor2_id"}, status_code=400)
         competitor2 = db.session.get(Competitor, competitor2_id)
         if not competitor2:
             return error_response("NOT_FOUND", f"Competitor {competitor2_id} not found.", status_code=404)
@@ -698,6 +706,10 @@ def api_update_match(match_id):
     if "competitor1_id" in data:
         competitor1_id = data.get("competitor1_id")
         if competitor1_id is not None:
+            try:
+                competitor1_id = int(competitor1_id)
+            except (TypeError, ValueError):
+                return error_response("BAD_REQUEST", "competitor1_id must be an integer.", details={"field": "competitor1_id"}, status_code=400)
             competitor1 = db.session.get(Competitor, competitor1_id)
             if not competitor1:
                 return error_response("NOT_FOUND", f"Competitor {competitor1_id} not found.", status_code=404)
@@ -712,6 +724,10 @@ def api_update_match(match_id):
     if "competitor2_id" in data:
         competitor2_id = data.get("competitor2_id")
         if competitor2_id is not None:
+            try:
+                competitor2_id = int(competitor2_id)
+            except (TypeError, ValueError):
+                return error_response("BAD_REQUEST", "competitor2_id must be an integer.", details={"field": "competitor2_id"}, status_code=400)
             competitor2 = db.session.get(Competitor, competitor2_id)
             if not competitor2:
                 return error_response("NOT_FOUND", f"Competitor {competitor2_id} not found.", status_code=404)
@@ -759,8 +775,12 @@ def api_record_result(match_id):
             details={"field": "status", "valid_values": sorted(valid_statuses)},
             status_code=400,
         )
-    if not winner_id:
+    if winner_id is None:
         return error_response("BAD_REQUEST", "winner_id is required.", details={"field": "winner_id"}, status_code=400)
+    try:
+        winner_id = int(winner_id)
+    except (TypeError, ValueError):
+        return error_response("BAD_REQUEST", "winner_id must be an integer.", details={"field": "winner_id"}, status_code=400)
 
     valid_competitors = {match.competitor1_id, match.competitor2_id} - {None}
     if winner_id not in valid_competitors:
