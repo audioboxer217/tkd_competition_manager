@@ -582,4 +582,11 @@ Link: </api/v1>; rel="successor-version"
 | `POST /divisions/<id>/generate_bracket` | `POST /api/v1/divisions/<id>/generate_bracket` |
 | `GET /divisions/<id>/bracket` | `GET /api/v1/divisions/<id>/bracket` |
 | `GET /divisions/<id>/bracket_ui` | `GET /ui/divisions/<id>/bracket` (HTMX fragment) |
-| `PUT /matches/<id>/schedule` | `PATCH /api/v1/matches/<id>` |
+| `PUT /matches/<id>/schedule` | `PATCH /api/v1/matches/<id>`* |
+
+> **\* Scheduling semantics change in v1:** The legacy `PUT /matches/<id>/schedule` endpoint accepted a `ring_sequence` field (1–99) and automatically derived `match_number` as `ring_id * 100 + ring_sequence`, and performed conflict checks to prevent two matches sharing the same number on a ring.
+>
+> `PATCH /api/v1/matches/<id>` **does not** accept `ring_sequence` and **does not** perform conflict checks. Clients migrating from the legacy schedule route must:
+> - Compute `match_number` explicitly (e.g., `ring_id * 100 + desired_sequence`) and send it directly.
+> - Send `ring_id` separately as a field in the same PATCH request.
+> - Handle scheduling conflict detection independently if required.
