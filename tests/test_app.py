@@ -6485,7 +6485,6 @@ class TestValidationErrorDetails:
         for name in ("Alice", "Bob"):
             api_client.post("/api/v1/competitors", json={"name": name, "division_id": div_id})
         api_client.post(f"/api/v1/divisions/{div_id}/generate_bracket")
-        from models import Match
         match = Match.query.filter_by(division_id=div_id).first()
         resp = api_client.post(f"/api/v1/matches/{match.id}/result", json={"status": "BAD", "winner_id": match.competitor1_id})
         assert resp.status_code == 400
@@ -6497,7 +6496,6 @@ class TestValidationErrorDetails:
         for name in ("Alice", "Bob"):
             api_client.post("/api/v1/competitors", json={"name": name, "division_id": div_id})
         api_client.post(f"/api/v1/divisions/{div_id}/generate_bracket")
-        from models import Match
         match = Match.query.filter_by(division_id=div_id).first()
         resp = api_client.post(f"/api/v1/matches/{match.id}/result", json={"status": "Completed"})
         assert resp.status_code == 400
@@ -6509,7 +6507,6 @@ class TestValidationErrorDetails:
         for name in ("Alice", "Bob"):
             api_client.post("/api/v1/competitors", json={"name": name, "division_id": div_id})
         api_client.post(f"/api/v1/divisions/{div_id}/generate_bracket")
-        from models import Match
         match = Match.query.filter_by(division_id=div_id).first()
         resp = api_client.post(f"/api/v1/matches/{match.id}/result", json={"status": "Completed", "winner_id": 99999})
         assert resp.status_code == 400
@@ -6554,10 +6551,8 @@ class TestDeprecatedRouteHeaders:
 
     def test_match_result_has_deprecation_header(self, client):
         div_id = client.post("/divisions", json={"name": "D"}).get_json()["id"]
-        from tests.test_app import _add_competitors, _generate_bracket
         _add_competitors(client, div_id, ["Alice", "Bob"])
         _generate_bracket(client, div_id)
-        from models import Match
         match = Match.query.filter_by(division_id=div_id).first()
         resp = client.post(
             f"/matches/{match.id}/result",
@@ -6567,14 +6562,12 @@ class TestDeprecatedRouteHeaders:
 
     def test_generate_bracket_has_deprecation_header(self, client):
         div_id = client.post("/divisions", json={"name": "D"}).get_json()["id"]
-        from tests.test_app import _add_competitors
         _add_competitors(client, div_id, ["Alice", "Bob"])
         resp = client.post(f"/divisions/{div_id}/generate_bracket")
         assert resp.headers.get("Deprecation") == "true"
 
     def test_get_bracket_has_deprecation_header(self, client):
         div_id = client.post("/divisions", json={"name": "D"}).get_json()["id"]
-        from tests.test_app import _add_competitors, _generate_bracket
         _add_competitors(client, div_id, ["Alice", "Bob"])
         _generate_bracket(client, div_id)
         resp = client.get(f"/divisions/{div_id}/bracket")
@@ -6582,7 +6575,6 @@ class TestDeprecatedRouteHeaders:
 
     def test_bracket_ui_has_deprecation_header(self, client):
         div_id = client.post("/divisions", json={"name": "D"}).get_json()["id"]
-        from tests.test_app import _add_competitors, _generate_bracket
         _add_competitors(client, div_id, ["Alice", "Bob"])
         _generate_bracket(client, div_id)
         resp = client.get(f"/divisions/{div_id}/bracket_ui")
@@ -6591,11 +6583,9 @@ class TestDeprecatedRouteHeaders:
     def test_schedule_match_has_deprecation_header(self, client):
         div_id = client.post("/divisions", json={"name": "D"}).get_json()["id"]
         ring_id = client.post("/rings", json={"name": "Ring 1"}).get_json()["id"]
-        from tests.test_app import _add_competitors, _generate_bracket
         _add_competitors(client, div_id, ["Alice", "Bob"])
         _generate_bracket(client, div_id)
         client.patch(f"/ui/divisions/{div_id}/bracket_ring", data={"ring_id": ring_id})
-        from models import Match
         match = Match.query.filter_by(division_id=div_id).first()
         resp = client.put(f"/matches/{match.id}/schedule", data={"ring_sequence": "5"})
         assert resp.headers.get("Deprecation") == "true"
