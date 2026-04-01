@@ -5388,11 +5388,10 @@ class TestApiV1Divisions:
 
 class TestApiV1Bracket:
     def _setup_division_with_bracket(self, api_client):
-        # Competitors and bracket generation don't have /api/v1 endpoints yet;
-        # use the existing HTMX/legacy routes purely for test-data setup.
         div_id = api_client.post("/api/v1/divisions", json={"name": "Bracket Div"}).get_json()["data"]["id"]
-        api_client.post(f"/ui/divisions/{div_id}/competitors", data={"names": "Alice\nBob\nCarol\nDave"})
-        api_client.post(f"/divisions/{div_id}/generate_bracket")
+        for name in ("Alice", "Bob", "Carol", "Dave"):
+            api_client.post("/api/v1/competitors", json={"name": name, "division_id": div_id})
+        api_client.post(f"/api/v1/divisions/{div_id}/generate_bracket")
         return div_id
 
     def test_get_bracket(self, api_client):
@@ -5429,11 +5428,10 @@ class TestApiV1Bracket:
 
 class TestApiV1MatchResult:
     def _setup_match(self, api_client):
-        # Competitors and bracket generation don't have /api/v1 endpoints yet;
-        # use the existing HTMX/legacy routes purely for test-data setup.
         div_id = api_client.post("/api/v1/divisions", json={"name": "Match Div"}).get_json()["data"]["id"]
-        api_client.post(f"/ui/divisions/{div_id}/competitors", data={"names": "Alice\nBob"})
-        api_client.post(f"/divisions/{div_id}/generate_bracket")
+        for name in ("Alice", "Bob"):
+            api_client.post("/api/v1/competitors", json={"name": name, "division_id": div_id})
+        api_client.post(f"/api/v1/divisions/{div_id}/generate_bracket")
         match = Match.query.filter_by(division_id=div_id, round_name="Final").first()
         return match
 
@@ -6083,3 +6081,247 @@ class TestApiV1Matches:
             "end_time",
         ):
             assert field in data, f"Missing field: {field}"
+
+# ---------------------------------------------------------------------------
+# API v1 — POST /api/v1/divisions/<id>/generate_bracket
+# ---------------------------------------------------------------------------
+
+
+class TestApiV1GenerateBracket:
+    """Tests for the POST /api/v1/divisions/<id>/generate_bracket endpoint."""
+
+    def _create_division(self, api_client, name="Gen Bracket Div"):
+        return api_client.post("/api/v1/divisions", json={"name": name}).get_json()["data"]["id"]
+
+    def _add_competitor(self, api_client, div_id, name):
+        return api_client.post("/api/v1/competitors", json={"name": name, "division_id": div_id}).get_json()["data"]["id"]
+
+    def test_generate_bracket_two_competitors(self, api_client):
+        div_id = self._create_division(api_client)
+        self._add_competitor(api_client, div_id, "Alice")
+        self._add_competitor(api_client, div_id, "Bob")
+        resp = api_client.post(f"/api/v1/divisions/{div_id}/generate_bracket")
+        assert resp.status_code == 201
+        body = resp.get_json()
+        assert body["error"] is None
+        data = body["data"]
+        assert data["division_id"] == div_id
+        assert data["competitors"] == 2
+        assert data["matches_created"] == 1
+
+    def test_generate_bracket_four_competitors(self, api_client):
+        div_id = self._create_division(api_client)
+        for name in ("Alice", "Bob", "Carol", "Dave"):
+            self._add_competitor(api_client, div_id, name)
+        resp = api_client.post(f"/api/v1/divisions/{div_id}/generate_bracket")
+        assert resp.status_code == 201
+        data = resp.get_json()["data"]
+        assert data["competitors"] == 4
+        assert data["matches_created"] == 3  # 2 semi-finals + 1 final
+
+    def test_generate_bracket_eight_competitors(self, api_client):
+        div_id = self._create_division(api_client)
+        for i in range(8):
+            self._add_competitor(api_client, div_id, f"Competitor {i + 1}")
+        resp = api_client.post(f"/api/v1/divisions/{div_id}/generate_bracket")
+        assert resp.status_code == 201
+        data = resp.get_json()["data"]
+        assert data["competitors"] == 8
+        assert data["matches_created"] == 7  # 4 QF + 2 SF + 1 F
+
+    def test_generate_bracket_three_competitors_creates_bye(self, api_client):
+        """Three competitors → one bye in the first round."""
+        div_id = self._create_division(api_client)
+        for name in ("Alice", "Bob", "Carol"):
+            self._add_competitor(api_client, div_id, name)
+        resp = api_client.post(f"/api/v1/divisions/{div_id}/generate_bracket")
+        assert resp.status_code == 201
+        data = resp.get_json()["data"]
+        assert data["competitors"] == 3
+        bye_matches = Match.query.filter_by(division_id=div_id, status="Completed (Bye)").count()
+        assert bye_matches == 1
+
+    def test_generate_bracket_too_few_competitors(self, api_client):
+        div_id = self._create_division(api_client)
+        self._add_competitor(api_client, div_id, "Lonely")
+        resp = api_client.post(f"/api/v1/divisions/{div_id}/generate_bracket")
+        assert resp.status_code == 400
+        body = resp.get_json()
+        assert body["error"]["code"] == "BAD_REQUEST"
+
+    def test_generate_bracket_no_competitors(self, api_client):
+        div_id = self._create_division(api_client)
+        resp = api_client.post(f"/api/v1/divisions/{div_id}/generate_bracket")
+        assert resp.status_code == 400
+        assert resp.get_json()["error"]["code"] == "BAD_REQUEST"
+
+    def test_generate_bracket_division_not_found(self, api_client):
+        resp = api_client.post("/api/v1/divisions/9999/generate_bracket")
+        assert resp.status_code == 404
+        assert resp.get_json()["error"]["code"] == "NOT_FOUND"
+
+    def test_generate_bracket_regenerates_clears_old_matches(self, api_client):
+        """Re-generating a bracket replaces all previous matches."""
+        div_id = self._create_division(api_client)
+        for name in ("Alice", "Bob"):
+            self._add_competitor(api_client, div_id, name)
+        # Generate once
+        api_client.post(f"/api/v1/divisions/{div_id}/generate_bracket")
+        first_count = Match.query.filter_by(division_id=div_id).count()
+        # Add a third competitor and regenerate
+        self._add_competitor(api_client, div_id, "Carol")
+        api_client.post(f"/api/v1/divisions/{div_id}/generate_bracket")
+        second_count = Match.query.filter_by(division_id=div_id).count()
+        # Three competitors → 3 matches (2 first-round + 1 final)
+        assert second_count != first_count
+        assert second_count == 3
+
+    def test_generate_bracket_body_less_post_allowed(self, api_client):
+        """generate_bracket accepts a POST with no request body."""
+        div_id = self._create_division(api_client)
+        for name in ("Alice", "Bob"):
+            self._add_competitor(api_client, div_id, name)
+        # No json= / data= argument → no body, no Content-Type header
+        resp = api_client.post(f"/api/v1/divisions/{div_id}/generate_bracket")
+        assert resp.status_code == 201
+
+    def test_generate_bracket_non_json_body_returns_415(self, api_client):
+        """A POST with a non-JSON body (form data) is rejected with 415."""
+        div_id = self._create_division(api_client)
+        for name in ("Alice", "Bob"):
+            self._add_competitor(api_client, div_id, name)
+        resp = api_client.post(f"/api/v1/divisions/{div_id}/generate_bracket", data="foo=bar")
+        assert resp.status_code == 415
+
+    def test_generate_bracket_unauthenticated_returns_401(self, app):
+        with app.test_client() as c:
+            resp = c.post("/api/v1/divisions/1/generate_bracket")
+            assert resp.status_code == 401
+
+    def test_generate_bracket_response_shape(self, api_client):
+        div_id = self._create_division(api_client)
+        for name in ("Alice", "Bob"):
+            self._add_competitor(api_client, div_id, name)
+        body = api_client.post(f"/api/v1/divisions/{div_id}/generate_bracket").get_json()
+        assert body["error"] is None
+        data = body["data"]
+        for field in ("division_id", "competitors", "matches_created"):
+            assert field in data, f"Missing field: {field}"
+
+    def test_generate_bracket_bracket_readable_via_get(self, api_client):
+        """After generating, GET /api/v1/divisions/<id>/bracket returns the bracket."""
+        div_id = self._create_division(api_client)
+        for name in ("Alice", "Bob"):
+            self._add_competitor(api_client, div_id, name)
+        api_client.post(f"/api/v1/divisions/{div_id}/generate_bracket")
+        resp = api_client.get(f"/api/v1/divisions/{div_id}/bracket")
+        assert resp.status_code == 200
+        bracket = resp.get_json()["data"]
+        assert len(bracket) == 1
+        assert bracket[0]["round_name"] == "Final"
+
+
+# ---------------------------------------------------------------------------
+# API v1 — end-to-end integration workflow
+# ---------------------------------------------------------------------------
+
+
+class TestApiV1EndToEndWorkflow:
+    """Integration tests that exercise a complete bracket tournament workflow
+    exclusively through /api/v1 endpoints, verifying no regressions and that
+    all migrated flows are stable."""
+
+    def test_full_bracket_workflow(self, api_client):
+        """Create division → add competitors → generate bracket → record results
+        → verify winner advancement through all rounds."""
+
+        # 1. Create a ring and division
+        ring_id = api_client.post("/api/v1/rings", json={"name": "Ring 1"}).get_json()["data"]["id"]
+        div_id = api_client.post("/api/v1/divisions", json={"name": "Men Under 80kg"}).get_json()["data"]["id"]
+
+        # 2. Add four competitors
+        competitor_ids = []
+        for name in ("Alice", "Bob", "Carol", "Dave"):
+            cid = api_client.post("/api/v1/competitors", json={"name": name, "division_id": div_id}).get_json()["data"]["id"]
+            competitor_ids.append(cid)
+
+        # 3. Generate bracket
+        gen_resp = api_client.post(f"/api/v1/divisions/{div_id}/generate_bracket")
+        assert gen_resp.status_code == 201
+        gen_data = gen_resp.get_json()["data"]
+        assert gen_data["division_id"] == div_id
+        assert gen_data["competitors"] == 4
+        assert gen_data["matches_created"] == 3
+
+        # 4. Fetch bracket and inspect structure
+        bracket_resp = api_client.get(f"/api/v1/divisions/{div_id}/bracket")
+        assert bracket_resp.status_code == 200
+        bracket = bracket_resp.get_json()["data"]
+        assert len(bracket) == 3  # 2 semi-finals + 1 final
+        semi_finals = [m for m in bracket if m["round_name"] == "Semi-Final"]
+        final_matches = [m for m in bracket if m["round_name"] == "Final"]
+        assert len(semi_finals) == 2
+        assert len(final_matches) == 1
+
+        # 5. Assign ring to bracket matches via PATCH (tests PATCH endpoint integration)
+        for m in semi_finals:
+            match_id = m["match_id"]
+            patch_resp = api_client.patch(f"/api/v1/matches/{match_id}", json={"ring_id": ring_id, "status": "In Progress"})
+            assert patch_resp.status_code == 200
+
+        # 6. Record results for both semi-finals — winners advance to the Final
+        sf1 = semi_finals[0]
+        sf2 = semi_finals[1]
+        winner1 = sf1["competitor1"]["id"]
+        winner2 = sf2["competitor1"]["id"]
+
+        r1 = api_client.post(
+            f"/api/v1/matches/{sf1['match_id']}/result",
+            json={"status": "Completed", "winner_id": winner1},
+        )
+        assert r1.status_code == 200
+
+        r2 = api_client.post(
+            f"/api/v1/matches/{sf2['match_id']}/result",
+            json={"status": "Completed", "winner_id": winner2},
+        )
+        assert r2.status_code == 200
+
+        # 7. Verify winners advanced into the Final match
+        final_match_id = final_matches[0]["match_id"]
+        final_resp = api_client.get(f"/api/v1/matches/{final_match_id}")
+        assert final_resp.status_code == 200
+        final_data = final_resp.get_json()["data"]
+        advanced = {final_data["competitor1_id"], final_data["competitor2_id"]}
+        assert winner1 in advanced
+        assert winner2 in advanced
+
+        # 8. Record the final result
+        r3 = api_client.post(
+            f"/api/v1/matches/{final_match_id}/result",
+            json={"status": "Completed", "winner_id": winner1},
+        )
+        assert r3.status_code == 200
+        assert r3.get_json()["data"]["winner_id"] == winner1
+
+    def test_htmx_generate_bracket_route_still_works(self, client):
+        """Regression: the legacy HTMX /divisions/<id>/generate_bracket route is
+        unchanged and continues to return the HTML success fragment."""
+        div_id = client.post("/divisions", json={"name": "HTMX Div"}).get_json()["id"]
+        client.post(f"/ui/divisions/{div_id}/competitors", data={"names": "Alice\nBob"})
+        resp = client.post(f"/divisions/{div_id}/generate_bracket")
+        assert resp.status_code == 200
+        assert b"bracket" in resp.data.lower()
+
+    def test_htmx_match_schedule_route_still_works(self, client):
+        """Regression: the HTMX /matches/<id>/schedule PUT route is unchanged."""
+        div_id = client.post("/divisions", json={"name": "Schedule Div"}).get_json()["id"]
+        ring_id = client.post("/rings", json={"name": "Ring 1"}).get_json()["id"]
+        client.post(f"/ui/divisions/{div_id}/competitors", data={"names": "Alice\nBob"})
+        client.post(f"/divisions/{div_id}/generate_bracket")
+        # Assign a ring to the division first
+        client.patch(f"/ui/divisions/{div_id}/bracket_ring", data={"ring_id": ring_id})
+        match = Match.query.filter_by(division_id=div_id).first()
+        resp = client.put(f"/matches/{match.id}/schedule", data={"ring_sequence": "5"})
+        assert resp.status_code == 200
+        assert b"match" in resp.data.lower()
