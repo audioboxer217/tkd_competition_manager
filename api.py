@@ -1,5 +1,6 @@
 import hashlib
 import logging
+import math
 import secrets
 from datetime import datetime, timezone
 from functools import wraps
@@ -77,9 +78,14 @@ def api_login_required(f):
 
 @api_v1.before_request
 def enforce_json_content_type():
-    """Reject POST/PUT/PATCH requests whose Content-Type is not application/json."""
+    """Reject POST/PUT/PATCH requests that include a body without application/json Content-Type.
+
+    Body-less requests (Content-Length absent or zero) are allowed without a
+    Content-Type header so that action endpoints such as ``generate_bracket``
+    can be called without an explicit request body.
+    """
     if request.method in ("POST", "PUT", "PATCH"):
-        if not request.is_json:
+        if request.content_length and not request.is_json:
             return error_response(
                 "UNSUPPORTED_MEDIA_TYPE",
                 "Content-Type must be application/json.",
@@ -296,6 +302,114 @@ def api_get_bracket(div_id):
         for m in matches
     ]
     return success_response(bracket_data)
+
+
+def _get_round_name(num_matches):
+    """Return the standard tournament round name for a round with *num_matches* matches."""
+    if num_matches == 1:
+        return "Final"
+    elif num_matches == 2:
+        return "Semi-Final"
+    elif num_matches == 4:
+        return "Quarter-Final"
+    else:
+        return f"Round of {num_matches * 2}"
+
+
+@api_v1.route("/divisions/<int:div_id>/generate_bracket", methods=["POST"])
+@api_login_required
+def api_generate_bracket(div_id):
+    """Generate (or regenerate) a single-elimination bracket for the given division.
+
+    Clears any existing matches and creates a new bracket from the division's
+    competitors (ordered by their ``position`` field).  At least 2 competitors
+    are required.  Bye slots are auto-completed immediately.
+
+    The request body is optional; no configuration options are needed because
+    all inputs are derived from the division's competitors.  Clients may omit
+    the body entirely or send ``{}``.
+    """
+    division = db.session.get(Division, div_id)
+    if not division:
+        return error_response("NOT_FOUND", f"Division {div_id} not found.", status_code=404)
+
+    # Delete any existing matches before (re-)generating the bracket
+    Match.query.filter_by(division_id=div_id).delete()
+    db.session.flush()
+
+    competitors = Competitor.query.filter_by(division_id=div_id).order_by(Competitor.position).all()
+    num_comp = len(competitors)
+    if num_comp < 2:
+        db.session.rollback()
+        return error_response(
+            "BAD_REQUEST",
+            "At least 2 competitors are required to generate a bracket.",
+            status_code=400,
+        )
+
+    # Calculate bracket size (next power of 2)
+    next_power_of_2 = 2 ** math.ceil(math.log2(num_comp))
+    num_first_round_matches = next_power_of_2 // 2
+
+    # Distribute competitors into bracket slots in roster order
+    match_pairings = [[None, None] for _ in range(num_first_round_matches)]
+    for i, competitor in enumerate(competitors):
+        slot = i // num_first_round_matches
+        match_index = i % num_first_round_matches
+        match_pairings[match_index][slot] = competitor
+
+    # Create first-round matches
+    first_round_name = _get_round_name(num_first_round_matches)
+    current_round_matches = []
+    for pair in match_pairings:
+        comp1, comp2 = pair[0], pair[1]
+        match = Match(
+            division_id=div_id,
+            competitor1_id=comp1.id if comp1 else None,
+            competitor2_id=comp2.id if comp2 else None,
+            round_name=first_round_name,
+        )
+        if comp1 and not comp2:
+            match.winner_id = comp1.id
+            match.status = "Completed (Bye)"
+        elif comp2 and not comp1:
+            match.winner_id = comp2.id
+            match.status = "Completed (Bye)"
+        db.session.add(match)
+        current_round_matches.append(match)
+
+    db.session.flush()
+
+    # Build subsequent rounds bottom-up to the Final
+    matches_created = len(current_round_matches)
+    while len(current_round_matches) > 1:
+        next_round_matches = []
+        for i in range(0, len(current_round_matches), 2):
+            prev_match1 = current_round_matches[i]
+            prev_match2 = current_round_matches[i + 1]
+            r_name = _get_round_name(len(current_round_matches) // 2)
+            new_match = Match(division_id=div_id, round_name=r_name)
+            db.session.add(new_match)
+            db.session.flush()
+            prev_match1.next_match_id = new_match.id
+            prev_match2.next_match_id = new_match.id
+            if prev_match1.winner_id:
+                new_match.competitor1_id = prev_match1.winner_id
+            if prev_match2.winner_id:
+                new_match.competitor2_id = prev_match2.winner_id
+            next_round_matches.append(new_match)
+            matches_created += 1
+        current_round_matches = next_round_matches
+
+    db.session.commit()
+    return success_response(
+        {
+            "division_id": div_id,
+            "competitors": num_comp,
+            "matches_created": matches_created,
+        },
+        status_code=201,
+    )
 
 
 # --- /api/v1/competitors ---
