@@ -85,14 +85,13 @@ Links two competitors, tracks bracket progression. The `next_match_id` forms a b
 ```python
 class Score(db.Model):
     id: int (PK)
-    match_id: int (FK Match)
     competitor_id: int (FK Competitor)
-    points: int
-    warnings: int
-    match: Match (backref)
+    division_id: int (FK Division)
+    score_value: float
+    competitor: Competitor (backref)
 ```
 
-Scorekeeper record for a kyorugi match (points, warnings).
+Poomsae score for an individual competitor in a division. Each competitor may have at most one score per division (enforced by a unique constraint on `competitor_id` + `division_id`).
 
 ### ApiToken
 
@@ -101,9 +100,10 @@ class ApiToken(db.Model):
     id: int (PK)
     name: str
     token_hash: str                    # SHA-256 of the raw token (never store raw)
-    created_by_user: str               # Supabase user email
+    is_active: bool                    # False = revoked
     created_at: datetime
     last_used_at: Optional[datetime]
+    user_id: Optional[str]             # Optional owner reference (e.g. Supabase user id)
 ```
 
 Bearer token for `/api/v1` access. Token is shown only once at creation; thereafter, only the hash is stored.
@@ -213,7 +213,7 @@ Use these constants when validating user input or querying.
 
 ### Foreign Keys
 
-- `on_delete` behavior defaults to CASCADE for most relationships (deleting a division deletes its competitors/matches)
+- Child records are **not** deleted automatically by cascades. The SQLAlchemy relationships do not define `cascade="all, delete-orphan"`. Delete routes (e.g., `ui_delete_division`) manually delete child scores, matches, and competitors before deleting the parent record.
 
 ## Environment Configuration
 
@@ -233,8 +233,8 @@ Use these constants when validating user input or querying.
 **Target:** AWS Lambda via Zappa (`zappa_settings.json`)
 
 - Database: PostgreSQL via Supabase
-- Static files: Uploaded to S3 (via `scripts/update_secrets.py`)
-- Secrets: Loaded from `.env` or environment variables
+- Secrets: Uploaded to S3 as `secrets.json` via `scripts/update_secrets.py` (reads from a `<env>.env` file and writes to the Zappa S3 bucket)
+- Environment variables: Loaded from the S3 `secrets.json` at Lambda startup
 
 ## Design Patterns Used
 
