@@ -15,59 +15,101 @@ This is a lightweight, web-based **Taekwondo Competition Manager** built with Py
 
 ## Project Structure
 
-- `app.py` — Main application: Flask app, SQLAlchemy models, all route handlers
+**Three-file split** (no circular imports):
+- `models.py` — `db = SQLAlchemy()` (unbound), `VALID_EVENT_TYPES`, `COMPLETED_MATCH_STATUSES` constants, all SQLAlchemy models
+- `api.py` — `api_v1` Blueprint (`/api/v1` routes), token helpers (`_generate_raw_token`, `_hash_token`), `api_login_required` decorator, REST API endpoints
+- `app.py` — Flask app initialization, `db.init_app(app)`, CSRF protection, Supabase auth, UI/HTMX routes, page routes, imports from both `models` and `api`
+
+**Supporting files:**
 - `templates/` — Jinja2 HTML templates
-- `tests/` — Pytest test suite (`conftest.py` fixtures + `test_app.py`)
-- `scripts/init_db.py` — Script to initialize the database schema
-- `scripts/reset_db.py` — Script to reset the database
-- `scripts/test_db.py` — Script to test the database connection
-- `scripts/update_secrets.py` — Script to upload `secrets.json` configuration to an S3 bucket
-- `scripts/migrate_add_event_type.py` — Migration script to add `event_type` to Division
-- `scripts/migrate_add_poomsae_style.py` — Migration script to add `poomsae_style` to Division
-- `scripts/migrate_add_position.py` — Migration script to add `position` to Competitor
-- `pyproject.toml` — Project dependencies (managed with `uv`)
-- `zappa_settings.json` — AWS Lambda deployment configuration
+- `tests/conftest.py` — Pytest fixtures; imports from `models`, `api`, and `app`
+- `tests/test_app.py` — Test suite (484 tests, all passing)
+- `scripts/` — Utility scripts (seed_dev_db, init_db, reset_db, etc.)
+- `pyproject.toml` — Dependencies (managed with `uv`)
+- `zappa_settings.json` — AWS Lambda deployment config
 
 ## Database Models
 
-- **Ring** — Physical competition ring (e.g., "Ring 1")
-- **Division** — Category of competition (e.g., "Male - Black Belt - Under 70kg")
-- **Competitor** — Athlete belonging to a division
-- **Match** — Links two competitors, tracks winner, round name, ring assignment, and bracket tree via `next_match_id`
+- **Ring** — Physical competition ring (e.g., "Ring 1"); has many matches and divisions
+- **Division** — Category of competition (e.g., "Male - Black Belt - Under 70kg"); includes `event_type` (kyorugi/poomsae), `poomsae_style` (bracket/group), `ring_id` (for poomsae events)
+- **Competitor** — Athlete belonging to a division; includes `position` (seed/roster order)
+- **Match** — Links competitors, tracks winner, round, ring, and bracket tree via `next_match_id`
+- **Score** — Scorekeeper results for a match (kyorugi-specific)
+- **ApiToken** — Bearer tokens for `/api/v1` access; stored as SHA-256 hash
 
 ## Development Practices
 
-- Run the app locally with `uv run flask run`
-- Install dependencies with `uv sync`
-- Run tests with `uv run pytest` (uses SQLite in-memory; no PostgreSQL needed for tests)
-- Environment variables (`user`, `password`, `host`, `port`, `dbname`) are loaded from a `.env` file using `python-dotenv`
-- Required environment variables:
-  - `SECRET_KEY` — Flask session secret key (required at startup)
-  - `SUPABASE_URL` — URL of the Supabase project used for authentication (required at startup)
-  - `SUPABASE_KEY` — Supabase anonymous/service key (required at startup)
-  - `DATABASE_URL` — Full PostgreSQL URI (optional; takes precedence over individual `user`/`password`/`host`/`port`/`dbname` vars); set to `sqlite:///:memory:` for tests
-  - `user`, `password`, `host`, `port`, `dbname` — Individual PostgreSQL connection components (used when `DATABASE_URL` is not set)
-- Routes follow a pattern:
-  - `/ui/...` — HTMX fragment routes that return partial HTML
-  - `/admin/...` — Admin page routes that return full HTML templates
-  - `/divisions/...`, `/rings/...`, `/matches/...` — JSON API routes
-- HTMX responses return HTML fragments (not JSON)
-- Always use template files from the `templates/` directory for rendering HTML; avoid inline HTML in route handlers
-- Use Flask-SQLAlchemy ORM patterns; avoid raw SQL
+**Running locally:**
+- `uv run flask run` — Start dev server
+- `uv sync` — Install/sync dependencies
+- `uv run pytest tests/ -x -q` — Run test suite (fast; uses SQLite in-memory)
 
-## Authentication
+**Environment variables** (load from `.env` or `settings.json`):
+- `SECRET_KEY` — Flask session secret (required at startup)
+- `SUPABASE_URL`, `SUPABASE_KEY` — Supabase Auth (required at startup)
+- `DATABASE_URL` — PostgreSQL URI (optional; takes precedence); set to `sqlite:///:memory:` for tests
+- `user`, `password`, `host`, `port`, `dbname` — Fallback PostgreSQL components (when `DATABASE_URL` not set)
+- `APP_ENV=dev` — Optional; some scripts (e.g., seed_dev_db) check this
 
-- Authentication is handled by [Supabase Auth](https://supabase.com/docs/guides/auth)
-- The `supabase_client` (created from `SUPABASE_URL` + `SUPABASE_KEY`) is used for user sign-in; sign-out currently only clears the Flask session in the `/logout` route (no Supabase `sign_out` call)
-- Protected routes use the `@login_required` decorator, which checks `session.get("user")`
-- HTMX requests that fail authentication receive an `HX-Redirect` response header pointing to `/login`
-- CSRF protection is enabled globally via Flask-WTF (`CSRFProtect`); tests set `WTF_CSRF_ENABLED = False`
+**Route patterns:**
+- `/ui/...` — HTMX fragments returning partial HTML
+- `/admin/...` — Full HTML page templates
+- `/api/v1/...` — JSON API endpoints (Bearer token auth)
+- Legacy routes (deprecated) return `Deprecation: true` header + `Link` to successor
+
+**Key files for common tasks:**
+- Adding a new model: edit `models.py`, add to `db.Model`
+- Adding API endpoints: edit `api.py`, add routes to `api_v1` Blueprint
+- UI routes & Supabase auth: edit `app.py`
+- Test fixtures: `tests/conftest.py`; import models/helpers as needed
+- Scripts: use `from app import app` + `from models import db` pattern
+
+## REST API Documentation
+
+See [README.md](../../README.md) for complete `/api/v1` endpoint documentation, including:
+- Response envelope format (`{"data": ..., "error": {...}}`)
+- Bearer token authentication
+- All resource endpoints (Rings, Divisions, Competitors, Matches, Bracket, etc.)
+- Legacy endpoints and deprecation info
 
 ## Coding Conventions
 
-- Keep all models and routes in `app.py` (single-file Flask app pattern)
-- Use `db.session.add()`, `db.session.commit()`, and `db.session.flush()` for database writes
-- Use `Model.query.get_or_404(id)` for fetching records by primary key
+**Import order & dependencies:**
+- `models.py` ← `api.py` ← `app.py` (unidirectional; no circular imports)
+- `api.py` imports from `models` (models, constants, db instance)
+- `app.py` imports from both `api` (Blueprint, token helpers) and `models` (models, constants, db instance)
+- Tests import from all three files as needed
+
+**Database & ORM:**
+- Use `db.init_app(app)` in `app.py` (not `SQLAlchemy(app)`)
+- Use `Model.query.get_or_404(id)` for fetching by primary key
+- Use `db.session.add()`, `db.session.commit()`, `db.session.flush()` for writes
+- Avoid raw SQL; use SQLAlchemy ORM patterns
+
+**Constants (from `models.py`):**
+- `VALID_EVENT_TYPES = {"poomsae", "kyorugi"}`
+- `COMPLETED_MATCH_STATUSES = {"Completed", "Completed (Bye)", "Disqualification"}`
 - Match status values: `"Pending"`, `"In Progress"`, `"Completed"`, `"Disqualification"`, `"Completed (Bye)"`
 - Round name values: `"Round 1"`, `"Round {n}"`, `"Quarter-Final"`, `"Semi-Final"`, `"Final"`
-- Always write tests for any new page or functionality update
+
+**API conventions (`/api/v1`):**
+- Use `success_response(data, status_code)` and `error_response(code, message, details, status_code)` helpers
+- All responses use `{"data": ..., "error": null}` or `{"data": null, "error": {...}}` envelope
+- Protect routes with `@api_login_required` decorator (Bearer token auth, returns 401 JSON)
+- Exempt `api_v1` Blueprint from CSRF: `csrf.exempt(api_v1)` is set in `app.py`
+
+**HTML & templates:**
+- Always render templates from `templates/` directory; avoid inline HTML in route handlers
+- HTMX fragment routes (`/ui/...`) return partial HTML; full page routes return complete templates
+- Use Jinja2 template syntax; templates have access to Flask context
+
+**Authentication:**
+- UI routes use `@login_required` (checks `session.get("user")`); redirects to `/login` on failure
+- HTMX requests that fail auth get `HX-Redirect` header pointing to login
+- API routes use `@api_login_required` (Bearer token); returns JSON 401
+- Supabase Auth is handled via `supabase_client` (created from env vars `SUPABASE_URL`, `SUPABASE_KEY`)
+
+**Testing:**
+- Run with `uv run pytest tests/ -x -q` (SQLite in-memory, no PostgreSQL needed)
+- Tests set `WTF_CSRF_ENABLED = False` globally
+- Import fixtures from `tests/conftest.py`; import helpers from `api` as needed
