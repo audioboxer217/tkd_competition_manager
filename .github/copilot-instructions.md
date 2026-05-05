@@ -44,7 +44,7 @@ This is a lightweight, web-based **Taekwondo Competition Manager** built with Py
 - `uv sync` — Install/sync dependencies
 - `uv run pytest tests/ -x -q` — Run test suite (fast; uses SQLite in-memory)
 
-**Environment variables** (load from `.env` or `settings.json`):
+**Environment variables** (loaded from `.env`):
 - `SECRET_KEY` — Flask session secret (required at startup)
 - `SUPABASE_URL`, `SUPABASE_KEY` — Supabase Auth (required at startup)
 - `DATABASE_URL` — PostgreSQL URI (optional; takes precedence); set to `sqlite:///:memory:` for tests

@@ -409,7 +409,7 @@ from api import _generate_raw_token, _hash_token
 
 raw = _generate_raw_token()  # 43-char string
 hashed = _hash_token(raw)
-token = ApiToken(name="Test", token_hash=hashed, created_by_user="test@example.com")
+token = ApiToken(name="Test", token_hash=hashed, user_id="test-supabase-user-id")
 db.session.add(token)
 db.session.commit()
 ```
